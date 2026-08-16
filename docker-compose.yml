@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  # 1. API Gateway / Reverse Proxy
+  gateway:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend
+      - backend
+
+  # 2. Next.js Frontend
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+    depends_on:
+      - backend
+
+  # 3. FastAPI Backend API & Research Engine
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://nexus:nexuspass@postgres:5432/nexusai_db
+      - REDIS_URL=redis://redis:6379/0
+      - GOOGLE_GENERATIVE_AI_API_KEY=${GOOGLE_GENERATIVE_AI_API_KEY}
+      - TAVILY_API_KEY=${TAVILY_API_KEY}
+      - SECRET_KEY=nexusai-production-secret-key-2026
+    depends_on:
+      - postgres
+      - redis
+
+  # 4. PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: nexus
+      POSTGRES_PASSWORD: nexuspass
+      POSTGRES_DB: nexusai_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # 5. Redis Cache & Job Broker
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+volumes:
+  postgres_data:

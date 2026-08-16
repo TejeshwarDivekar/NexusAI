@@ -1,0 +1,75 @@
+[
+  {
+    "id": "eval_001",
+    "domain": "Computer Science - AI",
+    "question": "What are the primary latency and accuracy trade-offs in sub-4-bit KV-cache quantization for long-context LLMs?",
+    "target_sub_queries": [
+      "KV-cache quantization sub-4-bit latency trade-offs",
+      "long-context LLM key-value compression benchmarks"
+    ],
+    "expected_sources": [
+      {
+        "type": "academic_arxiv",
+        "keywords": ["quantization", "KV-cache", "long-context", "latency"]
+      }
+    ],
+    "expected_claims": [
+      {
+        "claim_type": "source_supported",
+        "keywords": ["quantization", "latency", "memory", "precision"]
+      },
+      {
+        "claim_type": "inference",
+        "keywords": ["long-context", "trade-off"]
+      }
+    ],
+    "min_required_evidence_count": 2,
+    "strict_citation_enforcement": true
+  },
+  {
+    "id": "eval_002",
+    "domain": "Biomedical Engineering",
+    "question": "How do engineered high-fidelity Cas9 variants reduce off-target cleavage compared to wild-type SpCas9?",
+    "target_sub_queries": [
+      "high-fidelity Cas9 variants off-target reduction",
+      "SpCas9 cleavage specificity engineered variants"
+    ],
+    "expected_sources": [
+      {
+        "type": "academic_pubmed",
+        "keywords": ["Cas9", "off-target", "fidelity", "cleavage"]
+      }
+    ],
+    "expected_claims": [
+      {
+        "claim_type": "source_supported",
+        "keywords": ["cleavage", "specificity", "off-target"]
+      }
+    ],
+    "min_required_evidence_count": 2,
+    "strict_citation_enforcement": true
+  },
+  {
+    "id": "eval_003",
+    "domain": "Quantum Computing",
+    "question": "What is the fault-tolerance threshold for surface codes under depolarizing physical noise?",
+    "target_sub_queries": [
+      "surface code fault tolerance threshold depolarizing noise",
+      "quantum error correction physical error rate threshold"
+    ],
+    "expected_sources": [
+      {
+        "type": "academic_arxiv",
+        "keywords": ["surface code", "fault-tolerance", "threshold", "noise"]
+      }
+    ],
+    "expected_claims": [
+      {
+        "claim_type": "source_supported",
+        "keywords": ["threshold", "error correction", "physical error rate"]
+      }
+    ],
+    "min_required_evidence_count": 2,
+    "strict_citation_enforcement": true
+  }
+]
