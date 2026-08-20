@@ -57,3 +57,6 @@ cloudflared
 # Generated documents (local)
 generated_docs/
 backend/generated_docs/
+
+.vercel
+.env*
