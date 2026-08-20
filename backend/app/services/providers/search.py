@@ -94,8 +94,12 @@ class ArxivSearchProvider(SearchProvider):
         try:
             # Clean search terms for arXiv query format
             clean_q = re.sub(r'[^a-zA-Z0-9\s]', ' ', query).strip()
-            encoded_query = urllib.parse.quote(clean_q)
-            url = f"http://export.arxiv.org/api/query?search_query=all:{encoded_query}&start=0&max_results={max_results}&sortBy=relevance&sortOrder=descending"
+            words = [w for w in clean_q.split() if len(w) > 2 and w.lower() not in ["with", "from", "about", "into", "onto", "using", "make", "paper"]]
+            if words:
+                arxiv_query = "+AND+".join([f"all:{urllib.parse.quote(w)}" for w in words[:4]])
+            else:
+                arxiv_query = f"all:{urllib.parse.quote(clean_q)}"
+            url = f"https://export.arxiv.org/api/query?search_query={arxiv_query}&start=0&max_results={max_results}&sortBy=relevance&sortOrder=descending"
 
             client = get_shared_client()
             resp = await client.get(url)
@@ -149,7 +153,8 @@ class WikipediaSearchProvider(SearchProvider):
             headers = {"User-Agent": "NexusAI-Research-Assistant/2.0 (mailto:researcher@nexusai.com)"}
 
             # 1. Search Wikipedia titles
-            encoded_query = urllib.parse.quote(query.strip())
+            clean_q = re.sub(r'[^a-zA-Z0-9\s]', ' ', query).strip()
+            encoded_query = urllib.parse.quote(clean_q)
             search_url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={encoded_query}&format=json&srlimit={max_results}"
             
             resp = await client.get(search_url, headers=headers)
@@ -163,24 +168,43 @@ class WikipediaSearchProvider(SearchProvider):
                     # Fetch summary extract
                     encoded_title = urllib.parse.quote(title)
                     summary_url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{encoded_title}"
-                    sum_resp = await client.get(summary_url, headers=headers)
-                    if sum_resp.status_code == 200:
-                        sum_data = sum_resp.json()
-                        extract = sum_data.get("extract", "")
-                        page_url = sum_data.get("content_urls", {}).get("desktop", {}).get("page", f"https://en.wikipedia.org/wiki/{encoded_title}")
-                        
-                        if extract:
-                            results.append({
-                                "title": f"Wikipedia: {title}",
-                                "url": page_url,
-                                "snippet": extract[:700],
-                                "content": extract,
-                                "source_type": "encyclopedia_wikipedia",
-                                "authors": ["Wikimedia Foundation / Wikipedia Contributors"],
-                                "publication_date": datetime.utcnow().strftime("%Y"),
-                                "reliability": 0.92,
-                                "retrieved_at": datetime.utcnow().strftime("%d %B %Y, %H:%M UTC")
-                            })
+                    try:
+                        sum_resp = await client.get(summary_url, headers=headers)
+                        if sum_resp.status_code == 200:
+                            sum_data = sum_resp.json()
+                            extract = sum_data.get("extract", "")
+                            page_url = sum_data.get("content_urls", {}).get("desktop", {}).get("page", f"https://en.wikipedia.org/wiki/{encoded_title}")
+                            
+                            if extract:
+                                results.append({
+                                    "title": f"Wikipedia: {title}",
+                                    "url": page_url,
+                                    "snippet": extract[:700],
+                                    "content": extract,
+                                    "source_type": "encyclopedia_wikipedia",
+                                    "authors": ["Wikimedia Foundation / Wikipedia Contributors"],
+                                    "publication_date": datetime.utcnow().strftime("%Y"),
+                                    "reliability": 0.92,
+                                    "retrieved_at": datetime.utcnow().strftime("%d %B %Y, %H:%M UTC")
+                                })
+                                continue
+                    except Exception:
+                        pass
+
+                    # Fallback to search snippet
+                    clean_snippet = re.sub(r'<[^>]+>', '', item.get("snippet", "")).strip()
+                    if clean_snippet:
+                        results.append({
+                            "title": f"Wikipedia: {title}",
+                            "url": f"https://en.wikipedia.org/wiki/{encoded_title}",
+                            "snippet": clean_snippet,
+                            "content": clean_snippet,
+                            "source_type": "encyclopedia_wikipedia",
+                            "authors": ["Wikimedia Foundation / Wikipedia Contributors"],
+                            "publication_date": datetime.utcnow().strftime("%Y"),
+                            "reliability": 0.92,
+                            "retrieved_at": datetime.utcnow().strftime("%d %B %Y, %H:%M UTC")
+                        })
         except Exception as e:
             logger.warning(f"Wikipedia search error for query '{query}': {e}")
         return results
