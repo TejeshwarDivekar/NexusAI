@@ -7,6 +7,7 @@ class QueryClassifier:
     """
     Classifies user research queries to determine retrieval strategies,
     real-time requirements, and intent routing.
+    Cleans conversational noise to formulate high-precision search keywords.
     """
 
     REALTIME_KEYWORDS = [
@@ -25,8 +26,24 @@ class QueryClassifier:
     ]
 
     @classmethod
+    def clean_search_terms(cls, query: str) -> str:
+        """Strips conversational noise and filler phrases to produce high-precision search keywords."""
+        q = query.strip()
+        noise_patterns = [
+            r'^(?:make|do|run|start|perform|conduct)\s+(?:a\s+)?research\s+(?:about|on|into|for)\s+',
+            r'^(?:write|generate|create)\s+(?:a\s+)?(?:report|paper|essay|analysis|document)\s+(?:about|on|into|for)\s+',
+            r'^(?:tell|explain|show)\s+(?:me\s+)?(?:about|how|why|what)\s+',
+            r'^(?:can\s+you\s+)?(?:please\s+)?(?:search|find|lookup|investigate)\s+(?:about|for|on)\s+',
+            r'^(?:give\s+me\s+)?(?:all\s+)?(?:information|info|details)\s+(?:about|on)\s+',
+        ]
+        for pat in noise_patterns:
+            q = re.sub(pat, '', q, flags=re.IGNORECASE).strip()
+        return q if len(q) >= 3 else query.strip()
+
+    @classmethod
     def classify(cls, query: str) -> Dict[str, Any]:
         q_lower = query.lower().strip()
+        clean_topic = cls.clean_search_terms(query)
         timestamp_str = datetime.utcnow().strftime("%d %B %Y, %H:%M UTC")
 
         # 1. Explicit calculation / numeric dataset request
@@ -46,11 +63,12 @@ class QueryClassifier:
             intent = "academic_scientific"
             is_current_required = False
 
-        # Generate targeted sub-queries
-        sub_queries = cls._generate_subqueries(query, intent)
+        # Generate targeted sub-queries using cleaned terms
+        sub_queries = cls._generate_subqueries(clean_topic, intent)
 
         return {
             "query": query,
+            "cleaned_topic": clean_topic,
             "intent": intent,
             "is_current_required": is_current_required,
             "retrieval_timestamp": timestamp_str,
@@ -58,8 +76,8 @@ class QueryClassifier:
         }
 
     @staticmethod
-    def _generate_subqueries(query: str, intent: str) -> List[str]:
-        base = query.strip()
+    def _generate_subqueries(clean_topic: str, intent: str) -> List[str]:
+        base = clean_topic.strip()
         if intent == "factual_encyclopedic":
             return [
                 base,

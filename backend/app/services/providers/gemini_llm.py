@@ -1,3 +1,4 @@
+import os
 import json
 import re
 import asyncio
@@ -24,10 +25,10 @@ class RealLLMProvider(LLMProvider):
         self.gemini_key = (
             gemini_api_key
             or settings.GOOGLE_API_KEY
-            or os_env("GEMINI_API_KEY")
-            or os_env("GOOGLE_GENERATIVE_AI_API_KEY")
+            or os.getenv("GEMINI_API_KEY")
+            or os.getenv("GOOGLE_GENERATIVE_AI_API_KEY")
         )
-        self.openai_key = openai_api_key or settings.OPENAI_API_KEY or os_env("OPENAI_API_KEY")
+        self.openai_key = openai_api_key or settings.OPENAI_API_KEY or os.getenv("OPENAI_API_KEY")
         self._client: Optional[httpx.AsyncClient] = None
         self.gemini_models = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.5-flash-lite", "gemini-2.5-pro"]
 
