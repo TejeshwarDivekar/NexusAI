@@ -11,6 +11,7 @@ import {
   ChevronUp,
   ArrowRight,
   ShieldCheck,
+  Calendar,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 
@@ -46,7 +47,6 @@ export function ResearchComposer({
   onOpenUpload,
 }: ResearchComposerProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [focusArea, setFocusArea] = useState("all");
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
@@ -56,13 +56,14 @@ export function ResearchComposer({
   };
 
   return (
-    <div
+    <form
+      onSubmit={onSubmit}
       style={{
         backgroundColor: "var(--bg-surface)",
         border: "1px solid var(--border-primary)",
         borderRadius: "var(--radius-lg)",
         boxShadow: "var(--shadow-sm)",
-        padding: "16px",
+        padding: "16px 14px",
         width: "100%",
         display: "flex",
         flexDirection: "column",
@@ -74,8 +75,8 @@ export function ResearchComposer({
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <div
             style={{
-              width: "24px",
-              height: "24px",
+              width: "26px",
+              height: "26px",
               borderRadius: "var(--radius-xs)",
               backgroundColor: "var(--accent-subtle)",
               color: "var(--accent-primary)",
@@ -84,7 +85,7 @@ export function ResearchComposer({
               justifyContent: "center",
             }}
           >
-            <Sparkles size={14} />
+            <Sparkles size={15} />
           </div>
           <span style={{ fontSize: "14px", fontWeight: 650, color: "var(--text-primary)" }}>
             Deep Research Investigation
@@ -105,10 +106,10 @@ export function ResearchComposer({
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="What research inquiry or scientific hypothesis would you like to investigate? (e.g. Compare memory efficiency in KV-cache quantization for long-context LLMs)"
+          placeholder="What research inquiry or scientific hypothesis would you like to investigate? (e.g. Compare memory efficiency in KV-cache quantization for LLMs)"
           style={{
             width: "100%",
-            fontSize: "14.5px",
+            fontSize: "15px",
             lineHeight: 1.6,
             color: "var(--text-primary)",
             backgroundColor: "var(--bg-subtle)",
@@ -143,93 +144,95 @@ export function ResearchComposer({
       >
         {/* Scope Selectors */}
         <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-          <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-tertiary)" }}>
+          <span style={{ fontSize: "12px", fontWeight: 650, color: "var(--text-tertiary)" }}>
             Scope:
           </span>
 
           <button
             type="button"
             onClick={() => onScopeChange({ ...scope, includeAcademic: !scope.includeAcademic })}
+            className="touch-target"
             style={{
               display: "inline-flex",
               alignItems: "center",
-              gap: "5px",
-              padding: "6px 10px",
-              borderRadius: "var(--radius-full)",
-              fontSize: "12px",
-              fontWeight: 500,
-              cursor: "pointer",
+              gap: "6px",
+              padding: "6px 12px",
+              borderRadius: "var(--radius-sm)",
+              fontSize: "12.5px",
+              fontWeight: scope.includeAcademic ? 650 : 500,
               border: `1px solid ${scope.includeAcademic ? "var(--accent-primary)" : "var(--border-primary)"}`,
-              backgroundColor: scope.includeAcademic ? "var(--accent-subtle)" : "transparent",
+              backgroundColor: scope.includeAcademic ? "var(--accent-subtle)" : "var(--bg-subtle)",
               color: scope.includeAcademic ? "var(--accent-primary)" : "var(--text-secondary)",
-              minHeight: "36px",
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+              minHeight: "44px",
             }}
           >
-            <BookOpen size={13} />
+            <BookOpen size={14} />
             <span>Academic</span>
           </button>
 
           <button
             type="button"
             onClick={() => onScopeChange({ ...scope, includeWeb: !scope.includeWeb })}
+            className="touch-target"
             style={{
               display: "inline-flex",
               alignItems: "center",
-              gap: "5px",
-              padding: "6px 10px",
-              borderRadius: "var(--radius-full)",
-              fontSize: "12px",
-              fontWeight: 500,
-              cursor: "pointer",
+              gap: "6px",
+              padding: "6px 12px",
+              borderRadius: "var(--radius-sm)",
+              fontSize: "12.5px",
+              fontWeight: scope.includeWeb ? 650 : 500,
               border: `1px solid ${scope.includeWeb ? "var(--accent-primary)" : "var(--border-primary)"}`,
-              backgroundColor: scope.includeWeb ? "var(--accent-subtle)" : "transparent",
+              backgroundColor: scope.includeWeb ? "var(--accent-subtle)" : "var(--bg-subtle)",
               color: scope.includeWeb ? "var(--accent-primary)" : "var(--text-secondary)",
-              minHeight: "36px",
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+              minHeight: "44px",
             }}
           >
-            <Globe size={13} />
+            <Globe size={14} />
             <span>Web</span>
           </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              if (uploadedDocCount === 0 && onOpenUpload) {
-                onOpenUpload();
-              } else {
-                onScopeChange({ ...scope, includeDocuments: !scope.includeDocuments });
-              }
-            }}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "5px",
-              padding: "6px 10px",
-              borderRadius: "var(--radius-full)",
-              fontSize: "12px",
-              fontWeight: 500,
-              cursor: "pointer",
-              border: `1px solid ${scope.includeDocuments ? "var(--accent-primary)" : "var(--border-primary)"}`,
-              backgroundColor: scope.includeDocuments ? "var(--accent-subtle)" : "transparent",
-              color: scope.includeDocuments ? "var(--accent-primary)" : "var(--text-secondary)",
-              minHeight: "36px",
-            }}
-          >
-            <FileText size={13} />
-            <span>Docs ({uploadedDocCount})</span>
-          </button>
+          {onOpenUpload && (
+            <button
+              type="button"
+              onClick={onOpenUpload}
+              className="touch-target"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "6px 12px",
+                borderRadius: "var(--radius-sm)",
+                fontSize: "12.5px",
+                fontWeight: 500,
+                border: "1px solid var(--border-primary)",
+                backgroundColor: "var(--bg-subtle)",
+                color: "var(--text-secondary)",
+                cursor: "pointer",
+                minHeight: "44px",
+              }}
+            >
+              <FileText size={14} />
+              <span>Docs ({uploadedDocCount})</span>
+            </button>
+          )}
         </div>
 
-        {/* Depth Selector & Options */}
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        {/* Depth & Start Button */}
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", width: "100%", justifyContent: "space-between" }}>
+          {/* Depth Segment */}
           <div
             style={{
               display: "inline-flex",
-              padding: "2px",
+              padding: "3px",
               backgroundColor: "var(--bg-subtle)",
               borderRadius: "var(--radius-md)",
-              border: "1px solid var(--border-primary)",
               gap: "2px",
+              border: "1px solid var(--border-primary)",
             }}
           >
             {(["fast", "standard", "deep"] as const).map((d) => (
@@ -238,17 +241,18 @@ export function ResearchComposer({
                 type="button"
                 onClick={() => onDepthChange(d)}
                 style={{
-                  padding: "5px 9px",
+                  padding: "6px 10px",
                   fontSize: "12px",
-                  fontWeight: depth === d ? 600 : 500,
-                  borderRadius: "var(--radius-sm)",
-                  border: "none",
-                  backgroundColor: depth === d ? "var(--bg-surface)" : "transparent",
-                  color: depth === d ? "var(--text-primary)" : "var(--text-tertiary)",
-                  cursor: "pointer",
+                  fontWeight: depth === d ? 650 : 500,
                   textTransform: "capitalize",
+                  color: depth === d ? "var(--text-primary)" : "var(--text-secondary)",
+                  backgroundColor: depth === d ? "var(--bg-surface)" : "transparent",
+                  borderRadius: "var(--radius-xs)",
+                  border: "none",
+                  cursor: "pointer",
                   boxShadow: depth === d ? "var(--shadow-xs)" : "none",
-                  minHeight: "32px",
+                  transition: "all 0.15s ease",
+                  minHeight: "36px",
                 }}
               >
                 {d}
@@ -256,99 +260,25 @@ export function ResearchComposer({
             ))}
           </div>
 
-          <button
-            type="button"
-            onClick={() => setShowAdvanced(!showAdvanced)}
+          {/* Submit Button */}
+          <Button
+            type="submit"
+            variant="primary"
+            size="md"
+            rightIcon={<ArrowRight size={15} />}
+            isLoading={isLoading}
+            disabled={!query.trim() || isLoading}
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "4px",
-              padding: "6px 8px",
-              borderRadius: "var(--radius-sm)",
-              border: "1px solid transparent",
-              background: "transparent",
-              color: "var(--text-secondary)",
-              fontSize: "12.5px",
-              cursor: "pointer",
-              minHeight: "36px",
+              minHeight: "48px",
+              padding: "0 22px",
+              fontSize: "14px",
+              fontWeight: 650,
             }}
           >
-            <SlidersHorizontal size={13} />
-            <span className="mobile-hide">Options</span>
-            {showAdvanced ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-          </button>
+            Start Research
+          </Button>
         </div>
       </div>
-
-      {/* Advanced Drawer */}
-      {showAdvanced && (
-        <div
-          style={{
-            padding: "12px 14px",
-            borderRadius: "var(--radius-md)",
-            backgroundColor: "var(--bg-subtle)",
-            border: "1px solid var(--border-primary)",
-            display: "flex",
-            flexDirection: "column",
-            gap: "10px",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px" }}>
-            <label style={{ fontSize: "12.5px", fontWeight: 600, color: "var(--text-secondary)" }}>
-              Synthesis Focus Area:
-            </label>
-            <select
-              value={focusArea}
-              onChange={(e) => setFocusArea(e.target.value)}
-              style={{
-                fontSize: "12px",
-                padding: "4px 8px",
-                borderRadius: "var(--radius-sm)",
-                border: "1px solid var(--border-primary)",
-                backgroundColor: "var(--bg-surface)",
-                color: "var(--text-primary)",
-                outline: "none",
-                minHeight: "36px",
-              }}
-            >
-              <option value="all">Comprehensive Analysis</option>
-              <option value="architecture">Architecture & Methods</option>
-              <option value="benchmarks">Benchmarks & Empirical Metrics</option>
-              <option value="limitations">Limitations & Open Problems</option>
-            </select>
-          </div>
-        </div>
-      )}
-
-      {/* Submit Button */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "flex-end",
-          borderTop: "1px solid var(--border-primary)",
-          paddingTop: "12px",
-        }}
-      >
-        <Button
-          type="submit"
-          variant="primary"
-          size="md"
-          isLoading={isLoading}
-          disabled={!query.trim() || isLoading}
-          rightIcon={<ArrowRight size={15} />}
-          onClick={onSubmit}
-          style={{
-            width: "100%",
-            maxWidth: "240px",
-            minHeight: "44px",
-            fontSize: "14px",
-            fontWeight: 600,
-          }}
-        >
-          Start Research
-        </Button>
-      </div>
-    </div>
+    </form>
   );
 }

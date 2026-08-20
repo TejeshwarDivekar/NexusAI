@@ -632,7 +632,7 @@ export function ResearchWorkspace() {
           {/* VIEW 2: ADAPTIVE RESEARCH ROOM (3-Panel Desktop / Tabbed Mobile) */}
           {currentTab === "workspace" && (
             <div style={{ display: "flex", flexDirection: "column", flex: 1, overflow: "hidden", width: "100%" }}>
-              {/* Mobile Tab Switcher (< 1024px) */}
+              {/* Mobile Segmented Tab Switcher (< 1024px) */}
               <div
                 className="md-hide"
                 style={{
@@ -642,10 +642,12 @@ export function ResearchWorkspace() {
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-around",
+                  width: "100%",
                 }}
               >
                 <Tabs
-                  variant="pills"
+                  variant="segmented"
+                  fullWidth
                   activeTab={mobileWorkspaceView}
                   onChange={(id) => setMobileWorkspaceView(id as any)}
                   tabs={[
@@ -745,6 +747,7 @@ export function ResearchWorkspace() {
                         qualityScore={qualityScore}
                         sourceDiversityScore={sourceDiversityScore}
                         evidenceCoverageScore={evidenceCoverageScore}
+                        onViewSources={() => setMobileWorkspaceView("sources")}
                       />
                     ) : (
                       <div style={{ padding: "32px", width: "100%" }}>

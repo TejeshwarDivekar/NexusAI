@@ -10,6 +10,7 @@ import {
   HelpCircle,
   AlertCircle,
   FileText,
+  Layers,
 } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 
@@ -30,7 +31,6 @@ export interface EvidencePanelProps {
 
 export function EvidencePanel({ evidenceMatrix, onSelectEvidence }: EvidencePanelProps) {
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedConfidence, setSelectedConfidence] = useState<string>("all");
 
   const filteredEvidence = evidenceMatrix.filter((ev) => {
     const matchesSearch =
@@ -38,12 +38,7 @@ export function EvidencePanel({ evidenceMatrix, onSelectEvidence }: EvidencePane
       ev.fact_snippet.toLowerCase().includes(searchTerm.toLowerCase()) ||
       ev.source_title.toLowerCase().includes(searchTerm.toLowerCase());
 
-    const matchesConfidence =
-      selectedConfidence === "all" ||
-      (selectedConfidence === "high" && ev.confidence.toLowerCase().includes("9")) ||
-      (selectedConfidence === "moderate" && !ev.confidence.toLowerCase().includes("9"));
-
-    return matchesSearch && matchesConfidence;
+    return matchesSearch;
   });
 
   return (
@@ -53,12 +48,12 @@ export function EvidencePanel({ evidenceMatrix, onSelectEvidence }: EvidencePane
         flexDirection: "column",
         height: "100%",
         backgroundColor: "var(--bg-surface)",
-        borderLeft: "1px solid var(--border-primary)",
         overflow: "hidden",
+        width: "100%",
       }}
     >
       {/* Header */}
-      <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--border-primary)", display: "flex", flexDirection: "column", gap: "10px" }}>
+      <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--border-primary)", display: "flex", flexDirection: "column", gap: "10px", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
             <ShieldCheck size={16} color="var(--success)" />
@@ -76,17 +71,18 @@ export function EvidencePanel({ evidenceMatrix, onSelectEvidence }: EvidencePane
           style={{
             display: "flex",
             alignItems: "center",
-            gap: "6px",
-            padding: "4px 8px",
-            borderRadius: "var(--radius-sm)",
+            gap: "8px",
+            padding: "8px 12px",
+            borderRadius: "var(--radius-md)",
             border: "1px solid var(--border-primary)",
             backgroundColor: "var(--bg-subtle)",
+            minHeight: "44px",
           }}
         >
-          <Search size={13} color="var(--text-tertiary)" />
+          <Search size={15} color="var(--text-tertiary)" />
           <input
             type="text"
-            placeholder="Search verified quotes..."
+            placeholder="Search verified quotes & claims..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             style={{
@@ -94,7 +90,7 @@ export function EvidencePanel({ evidenceMatrix, onSelectEvidence }: EvidencePane
               background: "transparent",
               border: "none",
               outline: "none",
-              fontSize: "12.5px",
+              fontSize: "13.5px",
               color: "var(--text-primary)",
             }}
           />
@@ -102,10 +98,22 @@ export function EvidencePanel({ evidenceMatrix, onSelectEvidence }: EvidencePane
       </div>
 
       {/* Evidence Items List */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px", display: "flex", flexDirection: "column", gap: "12px" }}>
+      <div
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          padding: "12px 14px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "12px",
+          WebkitOverflowScrolling: "touch",
+        }}
+      >
         {filteredEvidence.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "32px 16px", color: "var(--text-tertiary)", fontSize: "13px" }}>
-            No matching verified evidence quotes found.
+          <div style={{ textAlign: "center", padding: "32px 16px", color: "var(--text-tertiary)", fontSize: "13.5px" }}>
+            {evidenceMatrix.length === 0
+              ? "No verified evidence items recorded yet. Run a research inquiry to extract citations."
+              : "No matching evidence quotes found."}
           </div>
         ) : (
           filteredEvidence.map((item, idx) => (
@@ -113,14 +121,14 @@ export function EvidencePanel({ evidenceMatrix, onSelectEvidence }: EvidencePane
               key={idx}
               onClick={() => onSelectEvidence && onSelectEvidence(item)}
               style={{
-                padding: "12px",
+                padding: "14px",
                 borderRadius: "var(--radius-md)",
                 border: "1px solid var(--border-primary)",
                 backgroundColor: "var(--bg-surface)",
                 boxShadow: "var(--shadow-xs)",
                 display: "flex",
                 flexDirection: "column",
-                gap: "8px",
+                gap: "10px",
                 cursor: onSelectEvidence ? "pointer" : "default",
                 transition: "all 0.15s ease",
               }}
@@ -133,63 +141,88 @@ export function EvidencePanel({ evidenceMatrix, onSelectEvidence }: EvidencePane
                 e.currentTarget.style.backgroundColor = "var(--bg-surface)";
               }}
             >
-              {/* Citation ID & Confidence Header */}
+              {/* Citation ID Header */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <span className="citation-pill">
                   {item.citation_id || `[${idx + 1}]`}
                 </span>
-                <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--success-text)", backgroundColor: "var(--success-bg)", padding: "1px 6px", borderRadius: "4px" }}>
-                  {item.confidence || "High (95%)"}
+                <span
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 650,
+                    color: "var(--success-text)",
+                    backgroundColor: "var(--success-bg)",
+                    padding: "2px 8px",
+                    borderRadius: "var(--radius-full)",
+                    border: "1px solid var(--success-border)",
+                  }}
+                >
+                  Verified Source
                 </span>
               </div>
 
-              {/* Verified Quote Block */}
+              {/* Research Claim */}
+              <div>
+                <div style={{ fontSize: "11.5px", fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", marginBottom: "4px" }}>
+                  Scientific Claim
+                </div>
+                <div style={{ fontSize: "13.5px", fontWeight: 600, color: "var(--text-primary)", lineHeight: 1.4 }}>
+                  {item.claim}
+                </div>
+              </div>
+
+              {/* Grounded Excerpt */}
               <div
                 style={{
-                  borderLeft: "2px solid var(--accent-primary)",
-                  paddingLeft: "8px",
-                  fontSize: "12.5px",
-                  color: "var(--text-primary)",
-                  lineHeight: 1.5,
-                  fontStyle: "italic",
+                  borderLeft: "3px solid var(--accent-primary)",
+                  paddingLeft: "10px",
+                  paddingTop: "2px",
+                  paddingBottom: "2px",
+                  backgroundColor: "var(--bg-subtle)",
+                  borderRadius: "0 var(--radius-sm) var(--radius-sm) 0",
+                  padding: "8px 10px",
                 }}
               >
-                &ldquo;{item.fact_snippet}&rdquo;
+                <div style={{ fontSize: "11px", fontWeight: 650, color: "var(--accent-primary)", marginBottom: "4px" }}>
+                  Source-Grounded Summary / Excerpt
+                </div>
+                <p
+                  style={{
+                    fontSize: "13px",
+                    lineHeight: 1.55,
+                    color: "var(--text-secondary)",
+                    margin: 0,
+                    fontStyle: "normal",
+                  }}
+                >
+                  {item.fact_snippet}
+                </p>
               </div>
 
               {/* Provenance Source */}
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  fontSize: "11.5px",
-                  color: "var(--text-tertiary)",
-                  borderTop: "1px solid var(--border-subtle)",
-                  paddingTop: "6px",
-                }}
-              >
-                <span
-                  style={{
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    maxWidth: "180px",
-                    fontWeight: 500,
-                  }}
-                >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: "4px" }}>
+                <div style={{ fontSize: "12px", color: "var(--text-tertiary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "200px" }}>
                   {item.source_title}
-                </span>
-                {item.source_url.startsWith("http") && (
+                </div>
+                {item.source_url && (
                   <a
                     href={item.source_url}
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={(e) => e.stopPropagation()}
-                    style={{ color: "var(--accent-primary)", display: "flex", alignItems: "center", gap: "2px" }}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      color: "var(--accent-primary)",
+                      textDecoration: "none",
+                      padding: "4px 6px",
+                    }}
                   >
                     <span>View</span>
-                    <ExternalLink size={11} />
+                    <ExternalLink size={12} />
                   </a>
                 )}
               </div>

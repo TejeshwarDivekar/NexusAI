@@ -85,32 +85,49 @@ export function TopBar({
           <button
             onClick={onToggleMobileMenu}
             aria-label="Toggle navigation menu"
-            className="md-hide"
+            className="md-hide touch-target"
             style={{
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              width: "36px",
-              height: "36px",
-              borderRadius: "var(--radius-sm)",
+              width: "44px",
+              height: "44px",
+              borderRadius: "var(--radius-md)",
               border: "1px solid var(--border-primary)",
               background: "var(--bg-subtle)",
               color: "var(--text-primary)",
               cursor: "pointer",
-              minWidth: "36px",
+              flexShrink: 0,
             }}
           >
-            <Menu size={18} />
+            <Menu size={20} />
           </button>
         )}
 
+        {/* Mobile Brand Name */}
+        <div
+          className="md-hide"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            fontSize: "15px",
+            fontWeight: 700,
+            color: "var(--text-primary)",
+            letterSpacing: "-0.02em",
+          }}
+        >
+          <span style={{ color: "var(--accent-primary)" }}>Nexus</span>Research
+        </div>
+
         <button
           onClick={onOpenProjects}
+          className="mobile-hide"
           style={{
             display: "flex",
             alignItems: "center",
             gap: "5px",
-            padding: "4px 8px",
+            padding: "6px 10px",
             borderRadius: "var(--radius-sm)",
             border: "1px solid transparent",
             background: "transparent",
@@ -118,6 +135,7 @@ export function TopBar({
             fontSize: "13px",
             fontWeight: 500,
             cursor: "pointer",
+            minHeight: "44px",
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.backgroundColor = "var(--bg-hover)";

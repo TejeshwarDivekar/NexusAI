@@ -11,7 +11,9 @@ import {
   ExternalLink,
   ShieldCheck,
   FileCheck2,
-  RefreshCw,
+  Share2,
+  MoreVertical,
+  Layers,
   Award,
 } from "lucide-react";
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
@@ -28,7 +30,7 @@ export interface ReportViewerProps {
   sourceDiversityScore?: number;
   evidenceCoverageScore?: number;
   onCitationClick?: (citationId: string) => void;
-  onRegenerateDocx?: () => void;
+  onViewSources?: () => void;
 }
 
 export function ReportViewer({
@@ -41,15 +43,38 @@ export function ReportViewer({
   sourceDiversityScore = 88.0,
   evidenceCoverageScore = 95.0,
   onCitationClick,
-  onRegenerateDocx,
+  onViewSources,
 }: ReportViewerProps) {
   const [copied, setCopied] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [showOverflowMenu, setShowOverflowMenu] = useState(false);
+  const [shareFeedback, setShareFeedback] = useState<string | null>(null);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(markdownContent);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+    setShowOverflowMenu(false);
+  };
+
+  const handleShare = async () => {
+    setShowOverflowMenu(false);
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share({
+          title: `Research Report: ${query}`,
+          text: summary || `Research report on: ${query}`,
+          url: window.location.href,
+        });
+        return;
+      } catch (e) {
+        // Fallback to clipboard if user dismissed share sheet
+      }
+    }
+    // Clipboard Fallback
+    navigator.clipboard.writeText(window.location.href);
+    setShareFeedback("Link copied to clipboard!");
+    setTimeout(() => setShareFeedback(null), 2500);
   };
 
   const handleDownloadMarkdown = () => {
@@ -60,17 +85,40 @@ export function ReportViewer({
     a.download = `Research-Report-${query.slice(0, 30).replace(/[^a-zA-Z0-9]/g, "_")}.md`;
     a.click();
     URL.revokeObjectURL(url);
+    setShowOverflowMenu(false);
   };
 
   const handleDownloadDocx = () => {
     if (!taskId) return;
     setIsDownloading(true);
-    const downloadUrl = `/api/v1/research/tasks/${taskId}/document/download`;
-    window.open(downloadUrl, "_blank");
-    setTimeout(() => setIsDownloading(false), 1500);
+    const downloadUrl = docxDownloadUrl || `/api/v1/research/tasks/${taskId}/document/download`;
+    
+    // Direct blob download for seamless mobile browser support (Android Chrome & iOS Safari)
+    fetch(downloadUrl)
+      .then((res) => {
+        if (!res.ok) throw new Error("Download failed");
+        return res.blob();
+      })
+      .then((blob) => {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `IEEE_Research_Paper_${query.slice(0, 25).replace(/[^a-zA-Z0-9]/g, "_")}.docx`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        setIsDownloading(false);
+      })
+      .catch(() => {
+        // Fallback to direct navigation
+        window.open(downloadUrl, "_blank");
+        setTimeout(() => setIsDownloading(false), 1500);
+      });
   };
 
   const handlePrint = () => {
+    setShowOverflowMenu(false);
     window.print();
   };
 
@@ -82,178 +130,281 @@ export function ReportViewer({
         height: "100%",
         backgroundColor: "var(--bg-app)",
         overflow: "hidden",
+        width: "100%",
       }}
     >
       {/* Editorial Action Bar */}
       <div
         style={{
-          padding: "12px 24px",
+          padding: "10px 14px",
           backgroundColor: "var(--bg-surface)",
           borderBottom: "1px solid var(--border-primary)",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
           flexShrink: 0,
+          gap: "8px",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <FileText size={16} color="var(--accent-primary)" />
-          <span style={{ fontSize: "13.5px", fontWeight: 650, color: "var(--text-primary)" }}>
-            Synthesized Research Report
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+          <FileText size={16} color="var(--accent-primary)" style={{ flexShrink: 0 }} />
+          <span
+            style={{
+              fontSize: "13.5px",
+              fontWeight: 650,
+              color: "var(--text-primary)",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Research Report
           </span>
-          <Badge variant="accent" size="sm" icon={<Award size={11} />}>
-            IEEE Compliant ({qualityScore}% Quality)
+          <Badge variant="accent" size="sm" icon={<Award size={11} />} className="mobile-hide">
+            IEEE Formatted
           </Badge>
         </div>
 
         {/* Action Buttons */}
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
           {taskId && (
             <Button
               variant="primary"
-              size="xs"
-              leftIcon={<FileCheck2 size={13} />}
+              size="sm"
+              leftIcon={<FileCheck2 size={14} />}
               onClick={handleDownloadDocx}
               isLoading={isDownloading}
+              style={{ minHeight: "44px" }}
             >
-              Download IEEE Word (.docx)
+              <span className="mobile-hide">Download IEEE Word (.docx)</span>
+              <span className="mobile-only">Download Word</span>
             </Button>
           )}
 
-          <Button
-            variant="outline"
-            size="xs"
-            leftIcon={copied ? <Check size={12} /> : <Copy size={12} />}
-            onClick={handleCopy}
-          >
-            {copied ? "Copied" : "Copy Markdown"}
-          </Button>
+          {/* Desktop Full Actions */}
+          <div className="mobile-hide" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <Button
+              variant="outline"
+              size="sm"
+              leftIcon={copied ? <Check size={13} /> : <Copy size={13} />}
+              onClick={handleCopy}
+              style={{ minHeight: "36px" }}
+            >
+              {copied ? "Copied" : "Copy"}
+            </Button>
 
-          <Button
-            variant="outline"
-            size="xs"
-            leftIcon={<Download size={12} />}
-            onClick={handleDownloadMarkdown}
-          >
-            Export .MD
-          </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              leftIcon={<Share2 size={13} />}
+              onClick={handleShare}
+              style={{ minHeight: "36px" }}
+            >
+              Share
+            </Button>
 
-          <Button
-            variant="outline"
-            size="xs"
-            leftIcon={<Printer size={12} />}
-            onClick={handlePrint}
-          >
-            Print
-          </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              leftIcon={<Download size={13} />}
+              onClick={handleDownloadMarkdown}
+              style={{ minHeight: "36px" }}
+            >
+              .MD
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              leftIcon={<Printer size={13} />}
+              onClick={handlePrint}
+              style={{ minHeight: "36px" }}
+            >
+              Print
+            </Button>
+          </div>
+
+          {/* Mobile Overflow Menu Button */}
+          <div className="md-hide" style={{ position: "relative" }}>
+            <button
+              onClick={() => setShowOverflowMenu(!showOverflowMenu)}
+              aria-label="More actions"
+              className="touch-target"
+              style={{
+                width: "44px",
+                height: "44px",
+                borderRadius: "var(--radius-md)",
+                border: "1px solid var(--border-primary)",
+                backgroundColor: "var(--bg-subtle)",
+                color: "var(--text-secondary)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+              }}
+            >
+              <MoreVertical size={18} />
+            </button>
+
+            {showOverflowMenu && (
+              <div
+                style={{
+                  position: "absolute",
+                  right: 0,
+                  top: "48px",
+                  backgroundColor: "var(--bg-surface)",
+                  border: "1px solid var(--border-primary)",
+                  borderRadius: "var(--radius-md)",
+                  boxShadow: "var(--shadow-lg)",
+                  padding: "6px",
+                  zIndex: 60,
+                  minWidth: "170px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "2px",
+                }}
+              >
+                <button
+                  onClick={handleCopy}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    padding: "10px 12px",
+                    fontSize: "13px",
+                    color: "var(--text-primary)",
+                    border: "none",
+                    background: "transparent",
+                    cursor: "pointer",
+                    borderRadius: "var(--radius-sm)",
+                    textAlign: "left",
+                    minHeight: "44px",
+                  }}
+                >
+                  {copied ? <Check size={15} color="var(--success)" /> : <Copy size={15} />}
+                  <span>{copied ? "Copied Markdown" : "Copy Markdown"}</span>
+                </button>
+
+                <button
+                  onClick={handleShare}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    padding: "10px 12px",
+                    fontSize: "13px",
+                    color: "var(--text-primary)",
+                    border: "none",
+                    background: "transparent",
+                    cursor: "pointer",
+                    borderRadius: "var(--radius-sm)",
+                    textAlign: "left",
+                    minHeight: "44px",
+                  }}
+                >
+                  <Share2 size={15} />
+                  <span>Share Report</span>
+                </button>
+
+                {onViewSources && (
+                  <button
+                    onClick={() => {
+                      setShowOverflowMenu(false);
+                      onViewSources();
+                    }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "10px 12px",
+                      fontSize: "13px",
+                      color: "var(--text-primary)",
+                      border: "none",
+                      background: "transparent",
+                      cursor: "pointer",
+                      borderRadius: "var(--radius-sm)",
+                      textAlign: "left",
+                      minHeight: "44px",
+                    }}
+                  >
+                    <Layers size={15} />
+                    <span>View Sources</span>
+                  </button>
+                )}
+
+                <button
+                  onClick={handleDownloadMarkdown}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    padding: "10px 12px",
+                    fontSize: "13px",
+                    color: "var(--text-primary)",
+                    border: "none",
+                    background: "transparent",
+                    cursor: "pointer",
+                    borderRadius: "var(--radius-sm)",
+                    textAlign: "left",
+                    minHeight: "44px",
+                  }}
+                >
+                  <Download size={15} />
+                  <span>Export Markdown</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Main Reading Room Document Canvas */}
+      {/* Share Toast Notification */}
+      {shareFeedback && (
+        <div
+          style={{
+            padding: "8px 14px",
+            backgroundColor: "var(--accent-subtle)",
+            color: "var(--accent-primary)",
+            fontSize: "12.5px",
+            fontWeight: 600,
+            textAlign: "center",
+            borderBottom: "1px solid var(--accent-border)",
+          }}
+        >
+          {shareFeedback}
+        </div>
+      )}
+
+      {/* Main Reading Room Canvas */}
       <div
         style={{
           flex: 1,
           overflowY: "auto",
-          padding: "36px 32px",
+          padding: "16px 12px",
+          WebkitOverflowScrolling: "touch",
         }}
       >
         <article
           style={{
-            maxWidth: "780px",
+            maxWidth: "800px",
             margin: "0 auto",
             backgroundColor: "var(--bg-surface)",
-            padding: "48px 44px",
+            padding: "24px 18px",
             borderRadius: "var(--radius-lg)",
             border: "1px solid var(--border-primary)",
             boxShadow: "var(--shadow-sm)",
+            wordBreak: "break-word",
           }}
         >
-          {/* Automatic IEEE Word Document Completion Banner */}
-          {taskId && (
-            <div
-              style={{
-                padding: "16px 20px",
-                borderRadius: "var(--radius-md)",
-                backgroundColor: "var(--accent-subtle)",
-                border: "1px solid var(--accent-border)",
-                marginBottom: "28px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                flexWrap: "wrap",
-                gap: "12px",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <FileCheck2 size={24} color="var(--accent-primary)" />
-                <div>
-                  <div style={{ fontSize: "14px", fontWeight: 650, color: "var(--text-primary)" }}>
-                    IEEE Research Paper (.docx) Generated
-                  </div>
-                  <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginTop: "1px" }}>
-                    Standard Roman-numeral headings (I-X), verified citations [1], and formal reference index.
-                  </div>
-                </div>
-              </div>
-              <Button
-                variant="primary"
-                size="sm"
-                leftIcon={<Download size={14} />}
-                onClick={handleDownloadDocx}
-              >
-                Download Word Document
-              </Button>
-            </div>
-          )}
-
-          {/* Research Quality Metrics Evaluation Banner */}
-          <div
-            style={{
-              padding: "12px 16px",
-              borderRadius: "var(--radius-md)",
-              backgroundColor: "var(--bg-subtle)",
-              border: "1px solid var(--border-primary)",
-              marginBottom: "28px",
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-              gap: "12px",
-            }}
-          >
-            <div>
-              <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase" }}>
-                Overall Quality Score
-              </div>
-              <div style={{ fontSize: "16px", fontWeight: 700, color: "var(--accent-primary)" }}>
-                {qualityScore}% <span style={{ fontSize: "11px", fontWeight: 500, color: "var(--text-secondary)" }}>(High Fidelity)</span>
-              </div>
-            </div>
-            <div>
-              <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase" }}>
-                Source Diversity
-              </div>
-              <div style={{ fontSize: "16px", fontWeight: 700, color: "var(--text-primary)" }}>
-                {sourceDiversityScore}%
-              </div>
-            </div>
-            <div>
-              <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase" }}>
-                Evidence Grounding
-              </div>
-              <div style={{ fontSize: "16px", fontWeight: 700, color: "var(--success-text)" }}>
-                {evidenceCoverageScore}%
-              </div>
-            </div>
-          </div>
-
           {/* Executive Synthesis Summary Header */}
           {summary && (
             <div
               style={{
-                padding: "16px 18px",
+                padding: "14px 16px",
                 borderRadius: "var(--radius-md)",
                 backgroundColor: "var(--bg-subtle)",
                 border: "1px solid var(--border-primary)",
-                marginBottom: "32px",
+                marginBottom: "24px",
               }}
             >
               <div
@@ -272,7 +423,7 @@ export function ReportViewer({
                 <Sparkles size={13} />
                 <span>Executive Synthesis</span>
               </div>
-              <p style={{ fontSize: "14px", color: "var(--text-secondary)", lineHeight: 1.6 }}>
+              <p style={{ fontSize: "14px", color: "var(--text-secondary)", lineHeight: 1.6, margin: 0 }}>
                 {summary}
               </p>
             </div>
