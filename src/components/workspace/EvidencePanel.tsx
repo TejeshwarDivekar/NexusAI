@@ -21,6 +21,8 @@ export interface EvidenceData {
   claim: string;
   fact_snippet: string;
   confidence: string;
+  why_relevant?: string;
+  query_relevance?: string;
   relevance_score?: number;
 }
 
@@ -183,26 +185,34 @@ export function EvidencePanel({
                     style={{
                       fontSize: "11px",
                       fontWeight: 650,
-                      color: "var(--success-text)",
-                      backgroundColor: "var(--success-bg)",
+                      color: item.confidence === "High" ? "var(--success-text)" : "var(--accent-primary)",
+                      backgroundColor: item.confidence === "High" ? "var(--success-bg)" : "var(--accent-subtle)",
                       padding: "2px 8px",
                       borderRadius: "var(--radius-full)",
-                      border: "1px solid var(--success-border)",
+                      border: `1px solid ${item.confidence === "High" ? "var(--success-border)" : "var(--accent-subtle)"}`,
                     }}
                   >
-                    Verified Source
+                    Confidence: {item.confidence || "High"}
                   </span>
                 </div>
 
                 {/* Research Claim */}
                 <div>
-                  <div style={{ fontSize: "11.5px", fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", marginBottom: "4px" }}>
-                    Scientific Claim
+                  <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", marginBottom: "4px" }}>
+                    Claim
                   </div>
                   <div style={{ fontSize: "13.5px", fontWeight: 600, color: "var(--text-primary)", lineHeight: 1.4 }}>
                     {item.claim}
                   </div>
                 </div>
+
+                {/* Why Relevant */}
+                {item.why_relevant && (
+                  <div style={{ fontSize: "12px", color: "var(--text-secondary)", backgroundColor: "var(--bg-subtle)", padding: "6px 10px", borderRadius: "var(--radius-sm)" }}>
+                    <span style={{ fontWeight: 650, color: "var(--accent-primary)" }}>Why Relevant: </span>
+                    {item.why_relevant}
+                  </div>
+                )}
 
                 {/* Grounded Excerpt */}
                 <div
@@ -217,47 +227,36 @@ export function EvidencePanel({
                   }}
                 >
                   <div style={{ fontSize: "11px", fontWeight: 650, color: "var(--accent-primary)", marginBottom: "4px" }}>
-                    Source-Grounded Summary / Excerpt
+                    Evidence Excerpt
                   </div>
-                  <p
-                    style={{
-                      fontSize: "13px",
-                      lineHeight: 1.55,
-                      color: "var(--text-secondary)",
-                      margin: 0,
-                      fontStyle: "normal",
-                    }}
-                  >
-                    {item.fact_snippet}
+                  <p style={{ fontSize: "12.5px", color: "var(--text-secondary)", lineHeight: 1.45, margin: 0, fontStyle: "italic" }}>
+                    "{item.fact_snippet}"
                   </p>
                 </div>
 
-                {/* Provenance Source */}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: "4px" }}>
-                  <div style={{ fontSize: "12px", color: "var(--text-tertiary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "200px" }}>
+                {/* Source Link */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "2px" }}>
+                  <span style={{ fontSize: "12px", color: "var(--text-tertiary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "200px" }}>
                     {item.source_title}
-                  </div>
-                  {item.source_url && (
-                    <a
-                      href={item.source_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "4px",
-                        fontSize: "12px",
-                        fontWeight: 650,
-                        color: "var(--accent-primary)",
-                        textDecoration: "none",
-                        padding: "4px 6px",
-                      }}
-                    >
-                      <span>View</span>
-                      <ExternalLink size={12} />
-                    </a>
-                  )}
+                  </span>
+                  <a
+                    href={item.source_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      fontSize: "12px",
+                      color: "var(--accent-primary)",
+                      fontWeight: 600,
+                      textDecoration: "none",
+                    }}
+                  >
+                    <span>View Source</span>
+                    <ExternalLink size={12} />
+                  </a>
                 </div>
               </div>
             );

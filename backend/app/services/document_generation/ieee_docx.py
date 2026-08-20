@@ -12,6 +12,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
 from app.core.logging import logger
+from app.services.query_classifier import QueryClassifier
 
 
 class IEEEDocumentGenerator:
@@ -83,11 +84,14 @@ class IEEEDocumentGenerator:
             footer_p.style.font.color.rgb = RGBColor(120, 120, 120)
 
         # 1. Title Block
+        classification = QueryClassifier.classify(query)
+        formal_title = classification.get("formal_title") or f"Research Synthesis: {query}"
+
         title_p = doc.add_paragraph()
         title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         title_p.paragraph_format.space_before = Pt(12)
         title_p.paragraph_format.space_after = Pt(6)
-        title_run = title_p.add_run(f"Evidence-Based Research Report:\n{query}")
+        title_run = title_p.add_run(formal_title)
         title_run.font.name = "Times New Roman"
         title_run.font.size = Pt(18)
         title_run.font.bold = True

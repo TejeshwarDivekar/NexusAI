@@ -10,6 +10,7 @@ from app.services.providers.search import UnifiedSearchProvider
 from app.services.providers.gemini_llm import GeminiLLMProvider
 from app.services.evidence_service import EvidenceService
 from app.services.contradiction_service import ContradictionService
+from app.services.relevance_service import SourceRelevanceScorer
 from app.services.data_analysis_service import DataAnalysisService
 
 
@@ -85,6 +86,7 @@ class ResearchEngine:
         all_sources = await cls.search_provider.search(
             query=cleaned_topic,
             sub_queries=sub_queries,
+            classification=classification,
             include_academic=include_academic,
             include_web=include_web,
             limit=limit_per_query
@@ -100,41 +102,42 @@ class ResearchEngine:
                     "content": doc_text,
                     "source_type": "user_document",
                     "reliability": 0.99,
+                    "relevance_score": 1.0,
+                    "query_relevance": "HIGH",
+                    "relevance_rationale": "Direct user uploaded context document",
                     "authors": ["Uploaded Document"],
                     "publication_date": datetime.utcnow().strftime("%Y")
                 })
 
         await asyncio.sleep(0.05)
 
-        # Step 3: Deduplication & Quality Filtering
+        # Step 3: Deduplication & Hard Relevance Gating
         yield {
             "status": "filtering",
-            "step": f"Stage 3/7: Filtering and ranking {len(all_sources)} retrieved sources",
+            "step": f"Stage 3/7: Auditing relevance and filtering {len(all_sources)} candidate sources",
             "progress": 45,
             "sources_count": len(all_sources)
         }
         
-        # Deduplicate sources by URL
-        seen_urls = set()
-        filtered_sources = []
-        for s in all_sources:
-            u = s.get("url", "")
-            if u and u not in seen_urls:
-                seen_urls.add(u)
-                filtered_sources.append(s)
-            elif not u:
-                filtered_sources.append(s)
+        filtered_sources = SourceRelevanceScorer.filter_and_rank_sources(
+            query=query,
+            cleaned_topic=cleaned_topic,
+            classification=classification,
+            sources=all_sources,
+            threshold=0.45,
+            max_results=8
+        )
 
-        if not filtered_sources:
-            # Safe factual fallback from general search
-            fallback_sources = await cls.search_provider.search(
+        if not filtered_sources and all_sources:
+            # Fallback: Check if any candidate has moderate baseline relevance
+            filtered_sources = SourceRelevanceScorer.filter_and_rank_sources(
                 query=query,
-                sub_queries=[query],
-                include_academic=True,
-                include_web=True,
-                limit=3
+                cleaned_topic=cleaned_topic,
+                classification=classification,
+                sources=all_sources,
+                threshold=0.30,
+                max_results=6
             )
-            filtered_sources = fallback_sources or []
 
         await asyncio.sleep(0.05)
 

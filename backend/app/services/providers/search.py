@@ -9,6 +9,8 @@ import httpx
 from app.config import settings
 from app.core.logging import logger
 from app.services.providers.base import SearchProvider
+from app.services.relevance_service import SourceRelevanceScorer
+from app.services.query_classifier import QueryClassifier
 
 
 def get_shared_client() -> httpx.AsyncClient:
@@ -471,6 +473,7 @@ class MultiSearchAggregator:
         queries: List[str],
         include_academic: bool = True,
         query_intent: str = "academic_scientific",
+        classification: Optional[Dict[str, Any]] = None,
         max_per_query: int = 4
     ) -> List[Dict[str, Any]]:
         tasks = []
@@ -496,7 +499,7 @@ class MultiSearchAggregator:
                 tasks.append(self.tavily_provider.search(primary_query, max_results=max_per_query))
 
         # Secondary subqueries searched in parallel
-        for q in queries[1:3]:
+        for q in queries[1:4]:
             if include_academic:
                 tasks.append(self.openalex_provider.search(q, max_results=2))
                 tasks.append(self.arxiv_provider.search(q, max_results=2))
@@ -508,9 +511,18 @@ class MultiSearchAggregator:
             if isinstance(r, list):
                 all_sources.extend(r)
 
-        return self.deduplicate_and_rank(all_sources)
+        return self.deduplicate_and_rank(
+            sources=all_sources,
+            query=primary_query,
+            classification=classification
+        )
 
-    def deduplicate_and_rank(self, sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def deduplicate_and_rank(
+        self,
+        sources: List[Dict[str, Any]],
+        query: Optional[str] = None,
+        classification: Optional[Dict[str, Any]] = None
+    ) -> List[Dict[str, Any]]:
         seen_urls = set()
         seen_titles = set()
         unique_sources = []
@@ -528,7 +540,22 @@ class MultiSearchAggregator:
                 seen_titles.add(norm_title)
             unique_sources.append(s)
 
-        # Sort by reliability score descending
+        if query:
+            if classification is None:
+                classification = QueryClassifier.classify(query)
+            cleaned_topic = classification.get("cleaned_topic", query)
+            ranked = SourceRelevanceScorer.filter_and_rank_sources(
+                query=query,
+                cleaned_topic=cleaned_topic,
+                classification=classification,
+                sources=unique_sources,
+                threshold=0.45,
+                max_results=10
+            )
+            if ranked:
+                return ranked
+
+        # Fallback: Sort by reliability score descending
         unique_sources.sort(key=lambda x: x.get("reliability", 0.8), reverse=True)
         return unique_sources[:20]
 
@@ -536,6 +563,7 @@ class MultiSearchAggregator:
         self,
         query: str,
         sub_queries: Optional[List[str]] = None,
+        classification: Optional[Dict[str, Any]] = None,
         include_academic: bool = True,
         include_web: bool = True,
         limit: int = 8
@@ -545,7 +573,12 @@ class MultiSearchAggregator:
             for sq in sub_queries:
                 if sq and sq != query and sq not in all_q:
                     all_q.append(sq)
-        return await self.search_all(all_q, include_academic=include_academic, max_per_query=limit)
+        return await self.search_all(
+            queries=all_q,
+            include_academic=include_academic,
+            classification=classification,
+            max_per_query=limit
+        )
 
 
 UnifiedSearchProvider = MultiSearchAggregator

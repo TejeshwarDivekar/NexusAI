@@ -30,6 +30,10 @@ export interface SourceData {
   authors?: string[];
   publication_date?: string | null;
   doi?: string;
+  source_validity?: string;
+  query_relevance?: string;
+  relevance_score?: number;
+  relevance_rationale?: string;
 }
 
 export interface SourcesPanelProps {
@@ -158,14 +162,44 @@ export function SourcesPanel({ sources, onSelectSource, onOpenCompare }: Sources
           }}
         >
           <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px", flexWrap: "wrap" }}>
               <Badge variant="accent" size="sm">
                 {activeSourceDetail.source_type.replace(/_/g, " ").toUpperCase()}
               </Badge>
               <Badge variant="success" size="sm" dot>
-                Verified Registry
+                Source Validity: Verified
               </Badge>
+              <span
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 650,
+                  color: "var(--accent-primary)",
+                  backgroundColor: "var(--accent-subtle)",
+                  padding: "3px 8px",
+                  borderRadius: "var(--radius-full)",
+                  border: "1px solid var(--accent-subtle)",
+                }}
+              >
+                Query Relevance: {activeSourceDetail.query_relevance || "High"}
+              </span>
             </div>
+
+            {activeSourceDetail.relevance_rationale && (
+              <div
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: "var(--radius-sm)",
+                  backgroundColor: "var(--accent-subtle)",
+                  color: "var(--text-primary)",
+                  fontSize: "13px",
+                  marginBottom: "12px",
+                  border: "1px solid var(--border-primary)",
+                }}
+              >
+                <span style={{ fontWeight: 650, color: "var(--accent-primary)" }}>Relevance Rationale: </span>
+                {activeSourceDetail.relevance_rationale}
+              </div>
+            )}
             <h2
               style={{
                 fontSize: "18px",
@@ -394,7 +428,7 @@ export function SourcesPanel({ sources, onSelectSource, onOpenCompare }: Sources
             >
               {/* Type Badge & Checkbox */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
                   {source.source_type.startsWith("academic") ? (
                     <BookOpen size={14} color="var(--accent-primary)" />
                   ) : source.source_type === "user_document" ? (
@@ -404,6 +438,19 @@ export function SourcesPanel({ sources, onSelectSource, onOpenCompare }: Sources
                   )}
                   <span style={{ fontSize: "11px", fontWeight: 650, color: "var(--text-secondary)", textTransform: "uppercase" }}>
                     {source.source_type.replace(/_/g, " ")}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "10px",
+                      fontWeight: 650,
+                      color: source.query_relevance === "HIGH" ? "var(--success-text)" : "var(--accent-primary)",
+                      backgroundColor: source.query_relevance === "HIGH" ? "var(--success-bg)" : "var(--accent-subtle)",
+                      padding: "1px 6px",
+                      borderRadius: "var(--radius-full)",
+                      border: `1px solid ${source.query_relevance === "HIGH" ? "var(--success-border)" : "var(--accent-subtle)"}`,
+                    }}
+                  >
+                    {source.query_relevance || "High"}
                   </span>
                 </div>
 

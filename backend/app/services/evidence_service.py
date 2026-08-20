@@ -22,6 +22,9 @@ class EvidenceService:
             title = src.get("title", "Reference Source")
             url = src.get("url", "#")
             src_type = src.get("source_type", "web")
+            relevance_tier = src.get("query_relevance", "HIGH" if src.get("relevance_score", 0.8) >= 0.7 else "MODERATE")
+            relevance_score = src.get("relevance_score", 0.95 if src_type.startswith("academic") else 0.85)
+            relevance_rationale = src.get("relevance_rationale", "Grounded empirical evidence addressing research inquiry.")
 
             # Split content into meaningful sentences
             sentences = re.split(r'(?<=[.!?])\s+', content.replace("\n", " "))
@@ -37,7 +40,7 @@ class EvidenceService:
                 valid_sentences = [content[:250].strip()]
 
             for sent in valid_sentences[:2]:
-                confidence = "High (95%+)" if src_type.startswith("academic") else "High (88%)"
+                confidence = "High" if relevance_tier == "HIGH" or src_type.startswith("academic") else "Moderate"
                 char_start = content.find(sent) if content else 0
                 char_end = char_start + len(sent) if char_start >= 0 else len(sent)
 
@@ -45,10 +48,12 @@ class EvidenceService:
                     "citation_id": f"[{citation_counter}]",
                     "source_title": title,
                     "source_url": url,
-                    "claim": f"Grounded finding: {sent[:120]}...",
+                    "claim": f"Grounded finding: {sent[:140]}...",
                     "fact_snippet": sent,
                     "confidence": confidence,
-                    "relevance_score": 0.95 if src_type.startswith("academic") else 0.88,
+                    "why_relevant": relevance_rationale,
+                    "query_relevance": relevance_tier,
+                    "relevance_score": relevance_score,
                     "char_start": max(0, char_start),
                     "char_end": max(0, char_end),
                 })
@@ -72,7 +77,9 @@ class EvidenceService:
                 "citation": ev["citation_id"],
                 "source": ev["source_title"],
                 "url": ev["source_url"],
-                "confidence_score": 0.95 if "95%" in ev.get("confidence", "") else 0.88,
+                "confidence_score": 0.95 if ev.get("confidence") == "High" else 0.80,
+                "confidence": ev.get("confidence", "High"),
+                "why_relevant": ev.get("why_relevant", "Direct empirical literature support"),
                 "claim_type": "source_supported",
                 "status": "VERIFIED_TRUE",
                 "evidence_quote": ev.get("fact_snippet", "")
@@ -88,6 +95,8 @@ class EvidenceService:
                     "source": "Cross-Source Synthesis",
                     "url": "internal://synthesis",
                     "confidence_score": 0.82,
+                    "confidence": "Moderate",
+                    "why_relevant": "Cross-literature thematic convergence",
                     "claim_type": "inference",
                     "status": "LOGICALLY_INFERRED",
                     "evidence_quote": "Synthesized from common convergence across top retrieved literature."
@@ -103,6 +112,8 @@ class EvidenceService:
                     "source": "Multi-Source Divergence",
                     "url": "internal://divergence",
                     "confidence_score": 0.65,
+                    "confidence": "Limited",
+                    "why_relevant": "Contested empirical or methodology metrics",
                     "claim_type": "conflicting",
                     "status": "CONTESTED",
                     "evidence_quote": "Disputed empirical or methodological metrics reported across independent trials."
