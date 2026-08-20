@@ -1,5 +1,5 @@
 import re
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 class ContradictionService:
     """
@@ -15,7 +15,7 @@ class ContradictionService:
     ]
 
     @classmethod
-    def detect_contradictions(cls, claims: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def detect_contradictions(cls, claims: List[Dict[str, Any]], evidence: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
         contradictions = []
         n = len(claims)
         if n < 2:

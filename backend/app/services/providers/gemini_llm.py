@@ -108,8 +108,7 @@ class RealLLMProvider(LLMProvider):
                 else:
                     logger.warning(f"OpenAI API returned status {resp.status_code}")
             except Exception as e:
-                logger.warning(f"OpenAI API call failed: {e}")
-
+                logger.warning("No LLM API keys configured or all providers failed")
         return ""
 
     async def generate_structured(
@@ -134,3 +133,7 @@ class RealLLMProvider(LLMProvider):
 def os_env(key: str) -> Optional[str]:
     import os
     return os.environ.get(key)
+
+
+GeminiLLMProvider = RealLLMProvider
+

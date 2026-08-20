@@ -49,6 +49,7 @@ export function ResearchWorkspace() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [rightPanelTab, setRightPanelTab] = useState<"evidence" | "contradictions">("evidence");
   const [mobileWorkspaceView, setMobileWorkspaceView] = useState<"report" | "sources" | "evidence">("report");
+  const [activeCitationId, setActiveCitationId] = useState<string | null>(null);
 
   // User Conversations State (Isolated per Login Account)
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
@@ -651,7 +652,7 @@ export function ResearchWorkspace() {
                   activeTab={mobileWorkspaceView}
                   onChange={(id) => setMobileWorkspaceView(id as any)}
                   tabs={[
-                    { id: "report", label: "Report" },
+                    { id: "report", label: "Answer" },
                     { id: "sources", label: "Sources", count: sources.length },
                     { id: "evidence", label: "Evidence", count: evidenceMatrix.length },
                   ]}
@@ -680,7 +681,7 @@ export function ResearchWorkspace() {
                   />
                 </div>
 
-                {/* Center Panel: Research Synthesis / Reading Room */}
+                {/* Center Panel: Research Synthesis / Answer Room */}
                 <div
                   style={{
                     flex: 1,
@@ -701,7 +702,10 @@ export function ResearchWorkspace() {
                         }}
                       />
                     ) : mobileWorkspaceView === "evidence" ? (
-                      <EvidencePanel evidenceMatrix={evidenceMatrix} />
+                      <EvidencePanel
+                        evidenceMatrix={evidenceMatrix}
+                        activeCitationId={activeCitationId}
+                      />
                     ) : errorMessage ? (
                       <div style={{ padding: "20px", width: "100%" }}>
                         <div
@@ -744,10 +748,17 @@ export function ResearchWorkspace() {
                         query={query}
                         taskId={currentTaskId}
                         docxDownloadUrl={docxDownloadUrl}
+                        sourcesCount={sources.length}
+                        evidenceCount={evidenceMatrix.length}
                         qualityScore={qualityScore}
                         sourceDiversityScore={sourceDiversityScore}
                         evidenceCoverageScore={evidenceCoverageScore}
+                        onCitationClick={(citationId) => {
+                          setActiveCitationId(citationId);
+                          setMobileWorkspaceView("evidence");
+                        }}
                         onViewSources={() => setMobileWorkspaceView("sources")}
+                        onViewEvidence={() => setMobileWorkspaceView("evidence")}
                       />
                     ) : (
                       <div style={{ padding: "32px", width: "100%" }}>
@@ -806,9 +817,17 @@ export function ResearchWorkspace() {
                         query={query}
                         taskId={currentTaskId}
                         docxDownloadUrl={docxDownloadUrl}
+                        sourcesCount={sources.length}
+                        evidenceCount={evidenceMatrix.length}
                         qualityScore={qualityScore}
                         sourceDiversityScore={sourceDiversityScore}
                         evidenceCoverageScore={evidenceCoverageScore}
+                        onCitationClick={(citationId) => {
+                          setActiveCitationId(citationId);
+                          setRightPanelTab("evidence");
+                        }}
+                        onViewSources={() => {}}
+                        onViewEvidence={() => setRightPanelTab("evidence")}
                       />
                     ) : (
                       <div style={{ padding: "48px", maxWidth: "600px", margin: "0 auto", width: "100%" }}>
@@ -850,7 +869,10 @@ export function ResearchWorkspace() {
 
                   <div style={{ flex: 1, overflowY: "auto" }}>
                     {rightPanelTab === "evidence" ? (
-                      <EvidencePanel evidenceMatrix={evidenceMatrix} />
+                      <EvidencePanel
+                        evidenceMatrix={evidenceMatrix}
+                        activeCitationId={activeCitationId}
+                      />
                     ) : (
                       <div style={{ padding: "14px" }}>
                         <ContradictionViewer contradictions={contradictions} />

@@ -531,3 +531,22 @@ class MultiSearchAggregator:
         # Sort by reliability score descending
         unique_sources.sort(key=lambda x: x.get("reliability", 0.8), reverse=True)
         return unique_sources[:20]
+
+    async def search(
+        self,
+        query: str,
+        sub_queries: Optional[List[str]] = None,
+        include_academic: bool = True,
+        include_web: bool = True,
+        limit: int = 8
+    ) -> List[Dict[str, Any]]:
+        all_q = [query]
+        if sub_queries:
+            for sq in sub_queries:
+                if sq and sq != query and sq not in all_q:
+                    all_q.append(sq)
+        return await self.search_all(all_q, include_academic=include_academic, max_per_query=limit)
+
+
+UnifiedSearchProvider = MultiSearchAggregator
+
