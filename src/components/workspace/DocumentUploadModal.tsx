@@ -5,7 +5,7 @@ import { UploadCloud, FileText, CheckCircle2, AlertCircle, Loader2, X } from "lu
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 
-const BACKEND_URL = "http://localhost:8000/api/v1";
+const BACKEND_URL = "/api/v1";
 
 export interface DocumentUploadModalProps {
   isOpen: boolean;

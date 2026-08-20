@@ -33,6 +33,7 @@ def get_or_create_default_user(db: Session) -> User:
     return user
 
 
+@router.get("", response_model=List[DocumentOut])
 @router.get("/", response_model=List[DocumentOut])
 def list_documents(
     project_id: Optional[int] = None,

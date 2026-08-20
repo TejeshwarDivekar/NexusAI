@@ -297,6 +297,7 @@ class IEEEDocumentGenerator:
 
         return {
             "file_name": filename,
+            "filename": filename,
             "file_path": file_path,
             "file_size": file_size,
             "sha256_hash": file_hash,

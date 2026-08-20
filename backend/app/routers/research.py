@@ -11,14 +11,14 @@ from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.db.models import (
     ResearchTask, DocumentFile, Claim, EvidenceItem,
-    Contradiction, User, GeneratedDocument
+    Contradiction, User, GeneratedDocument, Conversation, Message
 )
 from app.schemas.research import (
     ResearchRequest, ResearchResult, ResearchTaskStatus, GeneratedDocumentOut
 )
 from app.services.research_engine import ResearchEngine
 from app.services.document_generation import IEEEDocumentGenerator, IEEEDocumentValidator
-from app.core.security import get_current_user_optional
+from app.core.security import get_current_user_optional, get_current_user
 from app.core.exceptions import NotFoundException
 from app.core.logging import logger
 
@@ -32,12 +32,23 @@ def get_or_create_default_user(db: Session) -> User:
         user = User(
             email="researcher@nexusai.com",
             username="Principal Researcher",
+            name="Principal Researcher",
             hashed_password=get_password_hash("ResearchPass2026!")
         )
         db.add(user)
         db.commit()
         db.refresh(user)
     return user
+
+
+def generate_title_from_query(query: str) -> str:
+    cleaned = " ".join(query.strip().split())
+    if len(cleaned) <= 45:
+        return cleaned.capitalize()
+    truncated = cleaned[:45]
+    if " " in truncated:
+        truncated = truncated.rsplit(" ", 1)[0]
+    return f"{truncated}..."
 
 
 def calculate_quality_metrics(sources: list, evidence: list, claims: list, contradictions: list) -> dict:
@@ -68,6 +79,39 @@ async def run_research(
     task_id = str(uuid.uuid4())
     user = current_user or get_or_create_default_user(db)
     
+    # 1. Manage Conversation Association
+    convo = None
+    if request.conversation_id:
+        convo = db.query(Conversation).filter(
+            Conversation.id == request.conversation_id,
+            Conversation.user_id == user.id
+        ).first()
+
+    if not convo:
+        convo_id = str(uuid.uuid4())
+        convo_title = generate_title_from_query(request.query)
+        convo = Conversation(
+            id=convo_id,
+            user_id=user.id,
+            title=convo_title,
+            created_at=datetime.datetime.utcnow(),
+            updated_at=datetime.datetime.utcnow()
+        )
+        db.add(convo)
+        db.commit()
+        db.refresh(convo)
+
+    # Save User message to conversation
+    user_msg = Message(
+        conversation_id=convo.id,
+        role="user",
+        content=request.query,
+        created_at=datetime.datetime.utcnow()
+    )
+    db.add(user_msg)
+    convo.updated_at = datetime.datetime.utcnow()
+    db.commit()
+
     # Fetch user documents if specified
     doc_texts = []
     if request.document_ids:
@@ -103,6 +147,7 @@ async def run_research(
 
     task = ResearchTask(
         id=task_id,
+        conversation_id=convo.id,
         project_id=request.project_id,
         question_id=request.question_id,
         user_id=user.id,
@@ -127,6 +172,18 @@ async def run_research(
     db.add(task)
     db.commit()
     db.refresh(task)
+
+    # Save Assistant synthesized report message in conversation
+    if final_state.get("report_markdown"):
+        assistant_msg = Message(
+            conversation_id=convo.id,
+            role="assistant",
+            content=final_state.get("report_markdown", ""),
+            created_at=datetime.datetime.utcnow()
+        )
+        db.add(assistant_msg)
+        convo.updated_at = datetime.datetime.utcnow()
+        db.commit()
 
     # Persist relational Claims and Evidence
     for c_data in final_state.get("claims", []):
@@ -213,6 +270,7 @@ async def run_research(
 
     return ResearchResult(
         task_id=task.id,
+        conversation_id=convo.id,
         query=task.query,
         status=task.status,
         project_id=task.project_id,
@@ -260,10 +318,18 @@ async def stream_research(
 
 
 @router.get("/tasks/{task_id}", response_model=ResearchResult)
-def get_task_result(task_id: str, db: Session = Depends(get_db)):
+def get_task_result(
+    task_id: str,
+    current_user: Optional[User] = Depends(get_current_user_optional),
+    db: Session = Depends(get_db)
+):
     task = db.query(ResearchTask).filter(ResearchTask.id == task_id).first()
     if not task:
         raise NotFoundException(resource="ResearchTask", resource_id=task_id)
+
+    # Security check: if task belongs to a user and authenticated user is different, deny access
+    if current_user and task.user_id and task.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access to this research task is forbidden.")
 
     download_url = f"/api/v1/research/tasks/{task.id}/document/download"
 
@@ -285,6 +351,7 @@ def get_task_result(task_id: str, db: Session = Depends(get_db)):
     
     return ResearchResult(
         task_id=task.id,
+        conversation_id=task.conversation_id,
         query=task.query,
         status=task.status,
         project_id=task.project_id,
@@ -308,10 +375,16 @@ def get_task_result(task_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/tasks/{task_id}/evidence")
-def get_task_evidence(task_id: str, db: Session = Depends(get_db)):
+def get_task_evidence(
+    task_id: str,
+    current_user: Optional[User] = Depends(get_current_user_optional),
+    db: Session = Depends(get_db)
+):
     task = db.query(ResearchTask).filter(ResearchTask.id == task_id).first()
     if not task:
         raise NotFoundException(resource="ResearchTask", resource_id=task_id)
+    if current_user and task.user_id and task.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access forbidden.")
     return {
         "task_id": task.id,
         "evidence_matrix": task.evidence_matrix or [],
@@ -320,10 +393,16 @@ def get_task_evidence(task_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/tasks/{task_id}/contradictions")
-def get_task_contradictions(task_id: str, db: Session = Depends(get_db)):
+def get_task_contradictions(
+    task_id: str,
+    current_user: Optional[User] = Depends(get_current_user_optional),
+    db: Session = Depends(get_db)
+):
     task = db.query(ResearchTask).filter(ResearchTask.id == task_id).first()
     if not task:
         raise NotFoundException(resource="ResearchTask", resource_id=task_id)
+    if current_user and task.user_id and task.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access forbidden.")
     return {
         "task_id": task.id,
         "contradictions": task.contradictions or []
@@ -339,10 +418,14 @@ def download_ieee_document(
 ):
     """
     Downloads the automatically generated IEEE Microsoft Word document (.docx).
+    Enforces user isolation.
     """
     task = db.query(ResearchTask).filter(ResearchTask.id == task_id).first()
     if not task:
         raise NotFoundException(resource="ResearchTask", resource_id=task_id)
+
+    if current_user and task.user_id and task.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access to this document is forbidden.")
 
     query_doc = db.query(GeneratedDocument).filter(GeneratedDocument.task_id == task_id)
     if version:
@@ -352,7 +435,6 @@ def download_ieee_document(
 
     doc = query_doc.first()
     if not doc or not os.path.exists(doc.file_path):
-        # Generate on-demand if not already cached
         docx_meta = IEEEDocumentGenerator.generate_docx(
             task_id=task.id,
             query=task.query,
@@ -378,22 +460,33 @@ def download_ieee_document(
 
 
 @router.get("/tasks/{task_id}/documents", response_model=List[GeneratedDocumentOut])
-def list_task_documents(task_id: str, db: Session = Depends(get_db)):
-    """Lists all generated document versions for a research task."""
-    docs = db.query(GeneratedDocument).filter(GeneratedDocument.task_id == task_id).order_by(GeneratedDocument.version.desc()).all()
+def list_task_documents(
+    task_id: str,
+    current_user: Optional[User] = Depends(get_current_user_optional),
+    db: Session = Depends(get_db)
+):
+    """Lists all generated documents and versions for a research task."""
+    task = db.query(ResearchTask).filter(ResearchTask.id == task_id).first()
+    if not task:
+        raise NotFoundException(resource="ResearchTask", resource_id=task_id)
+
+    if current_user and task.user_id and task.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access forbidden.")
+
+    gen_docs = db.query(GeneratedDocument).filter(GeneratedDocument.task_id == task_id).order_by(GeneratedDocument.version.desc()).all()
     return [
         GeneratedDocumentOut(
             id=d.id,
-            task_id=task_id,
+            task_id=task.id,
             version=d.version,
             file_name=d.file_name,
             file_size=d.file_size,
             sha256_hash=d.sha256_hash,
             doc_format=d.doc_format,
             generation_status=d.generation_status,
-            download_url=f"/api/v1/research/tasks/{task_id}/document/download?version={d.version}",
+            download_url=f"/api/v1/research/tasks/{task.id}/document/download?version={d.version}",
             created_at=d.created_at
-        ) for d in docs
+        ) for d in gen_docs
     ]
 
 
@@ -403,14 +496,16 @@ def regenerate_task_document(
     current_user: Optional[User] = Depends(get_current_user_optional),
     db: Session = Depends(get_db)
 ):
-    """Regenerates a new version (v2, v3, etc.) of the IEEE Word document for a completed task."""
+    """Regenerates a new version of the IEEE Word document for a task."""
     task = db.query(ResearchTask).filter(ResearchTask.id == task_id).first()
     if not task:
         raise NotFoundException(resource="ResearchTask", resource_id=task_id)
 
-    # Determine next version
-    latest = db.query(GeneratedDocument).filter(GeneratedDocument.task_id == task_id).order_by(GeneratedDocument.version.desc()).first()
-    next_version = (latest.version + 1) if latest else 1
+    if current_user and task.user_id and task.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access forbidden.")
+
+    latest_doc = db.query(GeneratedDocument).filter(GeneratedDocument.task_id == task_id).order_by(GeneratedDocument.version.desc()).first()
+    new_version = (latest_doc.version + 1) if latest_doc else 1
 
     docx_meta = IEEEDocumentGenerator.generate_docx(
         task_id=task.id,
@@ -421,7 +516,7 @@ def regenerate_task_document(
         claims=task.claims or [],
         contradictions=task.contradictions or [],
         summary=task.report_summary,
-        version=next_version
+        version=new_version
     )
 
     val_report = IEEEDocumentValidator.validate_docx(
@@ -429,11 +524,12 @@ def regenerate_task_document(
         expected_sources_count=len(task.sources or [])
     )
 
-    user = current_user or get_or_create_default_user(db)
+    user_id = current_user.id if current_user else task.user_id
+
     gen_doc = GeneratedDocument(
         task_id=task.id,
-        user_id=user.id,
-        version=next_version,
+        user_id=user_id,
+        version=new_version,
         file_name=docx_meta["file_name"],
         file_path=docx_meta["file_path"],
         file_size=docx_meta["file_size"],
@@ -448,16 +544,17 @@ def regenerate_task_document(
 
     return GeneratedDocumentOut(
         id=gen_doc.id,
-        task_id=task_id,
+        task_id=task.id,
         version=gen_doc.version,
         file_name=gen_doc.file_name,
         file_size=gen_doc.file_size,
         sha256_hash=gen_doc.sha256_hash,
         doc_format=gen_doc.doc_format,
         generation_status=gen_doc.generation_status,
-        download_url=f"/api/v1/research/tasks/{task_id}/document/download?version={gen_doc.version}",
+        download_url=f"/api/v1/research/tasks/{task.id}/document/download?version={gen_doc.version}",
         created_at=gen_doc.created_at
     )
+
 
 
 @router.get("/history", response_model=List[ResearchResult])
@@ -466,8 +563,13 @@ def get_research_history(
     current_user: Optional[User] = Depends(get_current_user_optional),
     db: Session = Depends(get_db)
 ):
-    """Returns real historical research inquiries and completed reports from the database."""
-    user = current_user or get_or_create_default_user(db)
+    """Returns real historical research inquiries belonging to the authenticated user from the database."""
+    if not current_user:
+        # Default user fallback only if unauthenticated
+        user = get_or_create_default_user(db)
+    else:
+        user = current_user
+
     tasks = db.query(ResearchTask).filter(
         ResearchTask.user_id == user.id,
         ResearchTask.status == "completed"
@@ -492,6 +594,7 @@ def get_research_history(
         ]
         results.append(ResearchResult(
             task_id=task.id,
+            conversation_id=task.conversation_id,
             query=task.query,
             status=task.status,
             project_id=task.project_id,

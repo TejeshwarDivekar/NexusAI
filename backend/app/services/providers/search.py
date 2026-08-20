@@ -8,6 +8,27 @@ from app.config import settings
 from app.core.logging import logger
 from app.services.providers.base import SearchProvider
 
+def get_shared_client() -> httpx.AsyncClient:
+    """Returns a pooled HTTP client attached to the currently active asyncio event loop."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop is not None:
+        client = getattr(loop, "_nexus_httpx_client", None)
+        if client is None or client.is_closed:
+            limits = httpx.Limits(max_keepalive_connections=25, max_connections=60, keepalive_expiry=60.0)
+            client = httpx.AsyncClient(
+                timeout=httpx.Timeout(6.0, connect=3.0),
+                limits=limits,
+                follow_redirects=True
+            )
+            setattr(loop, "_nexus_httpx_client", client)
+        return client
+
+    return httpx.AsyncClient(timeout=httpx.Timeout(6.0, connect=3.0), follow_redirects=True)
+
 
 class OpenAlexSearchProvider(SearchProvider):
     """Real scientific literature search using the OpenAlex Scholarly Graph (250M+ works)."""
@@ -19,43 +40,43 @@ class OpenAlexSearchProvider(SearchProvider):
             url = f"https://api.openalex.org/works?search={encoded_query}&per_page={max_results}"
             headers = {"User-Agent": "AI-Research-Assistant/1.0 (mailto:researcher@nexusai.com)"}
 
-            async with httpx.AsyncClient(timeout=12.0, headers=headers) as client:
-                resp = await client.get(url)
-                if resp.status_code == 200:
-                    for work in resp.json().get("results", []):
-                        title = work.get("title")
-                        if not title:
-                            continue
+            client = get_shared_client()
+            resp = await client.get(url, headers=headers)
+            if resp.status_code == 200:
+                for work in resp.json().get("results", []):
+                    title = work.get("title")
+                    if not title:
+                        continue
 
-                        authors = [
-                            a.get("author", {}).get("display_name", "")
-                            for a in work.get("authorships", [])
-                            if a.get("author", {}).get("display_name")
-                        ][:4]
+                    authors = [
+                        a.get("author", {}).get("display_name", "")
+                        for a in work.get("authorships", [])
+                        if a.get("author", {}).get("display_name")
+                    ][:4]
 
-                        doi = work.get("doi") or work.get("id") or "https://openalex.org"
-                        year = str(work.get("publication_year") or "")
+                    doi = work.get("doi") or work.get("id") or "https://openalex.org"
+                    year = str(work.get("publication_year") or "")
 
-                        # Reconstruct abstract from inverted index if present
-                        abstract = ""
-                        inv = work.get("abstract_inverted_index")
-                        if inv:
-                            words = sorted([(pos, word) for word, positions in inv.items() for pos in positions])
-                            abstract = " ".join([word for _, word in words])[:700]
+                    # Reconstruct abstract from inverted index if present
+                    abstract = ""
+                    inv = work.get("abstract_inverted_index")
+                    if inv:
+                        words = sorted([(pos, word) for word, positions in inv.items() for pos in positions])
+                        abstract = " ".join([word for _, word in words])[:700]
 
-                        venue = work.get("primary_location", {}).get("source", {}).get("display_name", "Academic Publication")
-                        snippet = abstract or f"Published in {venue} ({year}) by {', '.join(authors) if authors else 'Scholarly Authors'}."
+                    venue = work.get("primary_location", {}).get("source", {}).get("display_name", "Academic Publication")
+                    snippet = abstract or f"Published in {venue} ({year}) by {', '.join(authors) if authors else 'Scholarly Authors'}."
 
-                        results.append({
-                            "title": title.strip(),
-                            "url": doi,
-                            "snippet": snippet,
-                            "content": snippet,
-                            "source_type": "academic_openalex",
-                            "authors": authors,
-                            "publication_date": year if year else None,
-                            "reliability": 0.96,
-                        })
+                    results.append({
+                        "title": title.strip(),
+                        "url": doi,
+                        "snippet": snippet,
+                        "content": snippet,
+                        "source_type": "academic_openalex",
+                        "authors": authors,
+                        "publication_date": year if year else None,
+                        "reliability": 0.96,
+                    })
         except Exception as e:
             logger.warning(f"OpenAlex search error for query '{query}': {e}")
         return results
@@ -71,36 +92,36 @@ class EuropePMCSearchProvider(SearchProvider):
             url = f"https://www.ebi.ac.uk/europepmc/webservices/rest/search?query={encoded_query}&format=json&pageSize={max_results}"
             headers = {"User-Agent": "AI-Research-Assistant/1.0 (mailto:researcher@nexusai.com)"}
 
-            async with httpx.AsyncClient(timeout=12.0, headers=headers) as client:
-                resp = await client.get(url)
-                if resp.status_code == 200:
-                    for item in resp.json().get("resultList", {}).get("result", []):
-                        title = item.get("title", "").rstrip(".")
-                        if not title:
-                            continue
+            client = get_shared_client()
+            resp = await client.get(url, headers=headers)
+            if resp.status_code == 200:
+                for item in resp.json().get("resultList", {}).get("result", []):
+                    title = item.get("title", "").rstrip(".")
+                    if not title:
+                        continue
 
-                        authors_str = item.get("authorString", "")
-                        authors = [a.strip() for a in authors_str.split(",") if a.strip()][:4]
-                        
-                        doi_val = item.get("doi")
-                        url_val = f"https://doi.org/{doi_val}" if doi_val else f"https://europepmc.org/article/MED/{item.get('id', '')}"
-                        
-                        abstract = item.get("abstractText", "")[:700]
-                        journal = item.get("journalTitle", "Biomedical Journal")
-                        pub_year = str(item.get("pubYear", ""))
+                    authors_str = item.get("authorString", "")
+                    authors = [a.strip() for a in authors_str.split(",") if a.strip()][:4]
+                    
+                    doi_val = item.get("doi")
+                    url_val = f"https://doi.org/{doi_val}" if doi_val else f"https://europepmc.org/article/MED/{item.get('id', '')}"
+                    
+                    abstract = item.get("abstractText", "")[:700]
+                    journal = item.get("journalTitle", "Biomedical Journal")
+                    pub_year = str(item.get("pubYear", ""))
 
-                        snippet = abstract or f"Published in {journal} ({pub_year}) by {authors_str}."
+                    snippet = abstract or f"Published in {journal} ({pub_year}) by {authors_str}."
 
-                        results.append({
-                            "title": title.strip(),
-                            "url": url_val,
-                            "snippet": snippet,
-                            "content": snippet,
-                            "source_type": "academic_europepmc",
-                            "authors": authors,
-                            "publication_date": pub_year if pub_year else None,
-                            "reliability": 0.95,
-                        })
+                    results.append({
+                        "title": title.strip(),
+                        "url": url_val,
+                        "snippet": snippet,
+                        "content": snippet,
+                        "source_type": "academic_europepmc",
+                        "authors": authors,
+                        "publication_date": pub_year if pub_year else None,
+                        "reliability": 0.95,
+                    })
         except Exception as e:
             logger.warning(f"Europe PMC search error for query '{query}': {e}")
         return results
@@ -116,36 +137,36 @@ class PubmedSearchProvider(SearchProvider):
             esearch_url = f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term={encoded_query}&retmode=json&retmax={max_results}"
             headers = {"User-Agent": "AI-Research-Assistant/1.0 (mailto:researcher@nexusai.com)"}
 
-            async with httpx.AsyncClient(timeout=12.0, headers=headers) as client:
-                res = await client.get(esearch_url)
-                if res.status_code == 200:
-                    data = res.json()
-                    id_list = data.get("esearchresult", {}).get("idlist", [])
-                    if id_list:
-                        ids_str = ",".join(id_list)
-                        summary_url = f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id={ids_str}&retmode=json"
-                        sum_res = await client.get(summary_url)
-                        if sum_res.status_code == 200:
-                            sum_data = sum_res.json().get("result", {})
-                            for pmid in id_list:
-                                item = sum_data.get(pmid, {})
-                                title = item.get("title", "").rstrip(".")
-                                if not title:
-                                    continue
-                                pubdate = str(item.get("pubdate", ""))[:4]
-                                authors = [a.get("name", "") for a in item.get("authors", []) if a.get("name")][:4]
-                                journal = item.get("source", "Peer-Reviewed Medical Journal")
+            client = get_shared_client()
+            res = await client.get(esearch_url, headers=headers)
+            if res.status_code == 200:
+                data = res.json()
+                id_list = data.get("esearchresult", {}).get("idlist", [])
+                if id_list:
+                    ids_str = ",".join(id_list)
+                    summary_url = f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id={ids_str}&retmode=json"
+                    sum_res = await client.get(summary_url, headers=headers)
+                    if sum_res.status_code == 200:
+                        sum_data = sum_res.json().get("result", {})
+                        for pmid in id_list:
+                            item = sum_data.get(pmid, {})
+                            title = item.get("title", "").rstrip(".")
+                            if not title:
+                                continue
+                            pubdate = str(item.get("pubdate", ""))[:4]
+                            authors = [a.get("name", "") for a in item.get("authors", []) if a.get("name")][:4]
+                            journal = item.get("source", "Peer-Reviewed Medical Journal")
 
-                                results.append({
-                                    "title": title.strip(),
-                                    "url": f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/",
-                                    "snippet": f"Published in {journal} ({pubdate}) by {', '.join(authors) if authors else 'Clinical Investigators'}.",
-                                    "content": f"Title: {title}. Journal: {journal}. Authors: {', '.join(authors)}.",
-                                    "source_type": "academic_pubmed",
-                                    "authors": authors,
-                                    "publication_date": pubdate if pubdate else None,
-                                    "reliability": 0.98,
-                                })
+                            results.append({
+                                "title": title.strip(),
+                                "url": f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/",
+                                "snippet": f"Published in {journal} ({pubdate}) by {', '.join(authors) if authors else 'Clinical Investigators'}.",
+                                "content": f"Title: {title}. Journal: {journal}. Authors: {', '.join(authors)}.",
+                                "source_type": "academic_pubmed",
+                                "authors": authors,
+                                "publication_date": pubdate if pubdate else None,
+                                "reliability": 0.98,
+                            })
         except Exception as e:
             logger.warning(f"PubMed search error for query '{query}': {e}")
         return results
@@ -161,43 +182,43 @@ class CrossrefSearchProvider(SearchProvider):
             url = f"https://api.crossref.org/works?query={encoded_query}&rows={max_results}"
             headers = {"User-Agent": "AI-Research-Assistant/1.0 (mailto:researcher@nexusai.com)"}
 
-            async with httpx.AsyncClient(timeout=12.0, headers=headers) as client:
-                resp = await client.get(url)
-                if resp.status_code == 200:
-                    for item in resp.json().get("message", {}).get("items", []):
-                        titles = item.get("title", [])
-                        if not titles or not titles[0]:
-                            continue
-                        title = titles[0].strip()
+            client = get_shared_client()
+            resp = await client.get(url, headers=headers)
+            if resp.status_code == 200:
+                for item in resp.json().get("message", {}).get("items", []):
+                    titles = item.get("title", [])
+                    if not titles or not titles[0]:
+                        continue
+                    title = titles[0].strip()
 
-                        authors = []
-                        for a in item.get("author", []):
-                            name = f"{a.get('given', '')} {a.get('family', '')}".strip()
-                            if name:
-                                authors.append(name)
-                        authors = authors[:4]
+                    authors = []
+                    for a in item.get("author", []):
+                        name = f"{a.get('given', '')} {a.get('family', '')}".strip()
+                        if name:
+                            authors.append(name)
+                    authors = authors[:4]
 
-                        doi = item.get("DOI")
-                        url_val = f"https://doi.org/{doi}" if doi else item.get("URL", "https://crossref.org")
-                        
-                        year = ""
-                        date_parts = item.get("published-print", {}).get("date-parts", []) or item.get("published-online", {}).get("date-parts", [])
-                        if date_parts and date_parts[0]:
-                            year = str(date_parts[0][0])
+                    doi = item.get("DOI")
+                    url_val = f"https://doi.org/{doi}" if doi else item.get("URL", "https://crossref.org")
+                    
+                    year = ""
+                    date_parts = item.get("published-print", {}).get("date-parts", []) or item.get("published-online", {}).get("date-parts", [])
+                    if date_parts and date_parts[0]:
+                        year = str(date_parts[0][0])
 
-                        container = item.get("container-title", [""])[0] if item.get("container-title") else "Scholarly Publication"
-                        snippet = f"Published in {container} ({year}) by {', '.join(authors) if authors else 'Authors'}."
+                    container = item.get("container-title", [""])[0] if item.get("container-title") else "Scholarly Publication"
+                    snippet = f"Published in {container} ({year}) by {', '.join(authors) if authors else 'Authors'}."
 
-                        results.append({
-                            "title": title,
-                            "url": url_val,
-                            "snippet": snippet,
-                            "content": snippet,
-                            "source_type": "academic_crossref",
-                            "authors": authors,
-                            "publication_date": year if year else None,
-                            "reliability": 0.94,
-                        })
+                    results.append({
+                        "title": title,
+                        "url": url_val,
+                        "snippet": snippet,
+                        "content": snippet,
+                        "source_type": "academic_crossref",
+                        "authors": authors,
+                        "publication_date": year if year else None,
+                        "reliability": 0.94,
+                    })
         except Exception as e:
             logger.warning(f"Crossref search error for query '{query}': {e}")
         return results
@@ -222,20 +243,20 @@ class TavilySearchProvider(SearchProvider):
                 "max_results": max_results,
                 "include_answer": False,
             }
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                resp = await client.post(url, json=payload)
-                if resp.status_code == 200:
-                    for r in resp.json().get("results", []):
-                        results.append({
-                            "title": r.get("title", "Web Source"),
-                            "url": r.get("url", ""),
-                            "snippet": r.get("content", ""),
-                            "content": r.get("content", ""),
-                            "source_type": "web",
-                            "authors": [],
-                            "publication_date": None,
-                            "reliability": 0.90 if any(dom in r.get("url", "") for dom in [".edu", ".gov", ".org", "nature.com", "ieee.org", "science.org"]) else 0.82,
-                        })
+            client = get_shared_client()
+            resp = await client.post(url, json=payload)
+            if resp.status_code == 200:
+                for r in resp.json().get("results", []):
+                    results.append({
+                        "title": r.get("title", "Web Source"),
+                        "url": r.get("url", ""),
+                        "snippet": r.get("content", ""),
+                        "content": r.get("content", ""),
+                        "source_type": "web",
+                        "authors": [],
+                        "publication_date": None,
+                        "reliability": 0.90 if any(dom in r.get("url", "") for dom in [".edu", ".gov", ".org", "nature.com", "ieee.org", "science.org"]) else 0.82,
+                    })
         except Exception as e:
             logger.warning(f"Tavily search error for query '{query}': {e}")
         return results
@@ -258,14 +279,23 @@ class MultiSearchAggregator:
         max_per_query: int = 4
     ) -> List[Dict[str, Any]]:
         tasks = []
-        for q in queries:
+        
+        # Primary query gets searched across all registries
+        primary_query = queries[0] if queries else ""
+        if primary_query:
             if include_academic:
-                tasks.append(self.openalex_provider.search(q, max_results=max_per_query))
-                tasks.append(self.europepmc_provider.search(q, max_results=max_per_query))
-                tasks.append(self.pubmed_provider.search(q, max_results=max_per_query))
-                tasks.append(self.crossref_provider.search(q, max_results=max_per_query))
+                tasks.append(self.openalex_provider.search(primary_query, max_results=max_per_query))
+                tasks.append(self.europepmc_provider.search(primary_query, max_results=max_per_query))
+                tasks.append(self.pubmed_provider.search(primary_query, max_results=max_per_query))
+                tasks.append(self.crossref_provider.search(primary_query, max_results=max_per_query))
             if settings.TAVILY_API_KEY:
-                tasks.append(self.tavily_provider.search(q, max_results=max_per_query))
+                tasks.append(self.tavily_provider.search(primary_query, max_results=max_per_query))
+
+        # Secondary subqueries (if any) searched in parallel
+        for q in queries[1:3]:
+            if include_academic:
+                tasks.append(self.openalex_provider.search(q, max_results=2))
+                tasks.append(self.europepmc_provider.search(q, max_results=2))
 
         nested_results = await asyncio.gather(*tasks, return_exceptions=True)
         

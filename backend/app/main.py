@@ -13,10 +13,11 @@ from app.config import settings
 from app.core.logging import logger
 from app.core.exceptions import AppException
 from app.db.database import engine, Base
-from app.routers import health, auth, projects, documents, sources, research
+from app.db.init_db import init_and_upgrade_db
+from app.routers import health, auth, projects, documents, sources, research, conversations
 
-# Initialize database schema tables
-Base.metadata.create_all(bind=engine)
+# Safely initialize and migrate tables & columns without data loss
+init_and_upgrade_db()
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -86,6 +87,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 # Register API Routers
 app.include_router(health.router, prefix=settings.API_V1_STR)
 app.include_router(auth.router, prefix=settings.API_V1_STR)
+app.include_router(conversations.router, prefix=settings.API_V1_STR)
 app.include_router(projects.router, prefix=settings.API_V1_STR)
 app.include_router(documents.router, prefix=settings.API_V1_STR)
 app.include_router(sources.router, prefix=settings.API_V1_STR)
@@ -98,8 +100,11 @@ def root():
         "version": settings.VERSION,
         "status": "operational",
         "api_v1": settings.API_V1_STR,
-        "docs_url": f"{settings.API_V1_STR}/docs"
+        "features": [
+            "User Isolated Conversations",
+            "Multi-Source Academic Pipeline (OpenAlex, PubMed, Europe PMC, Crossref)",
+            "Deterministic Evidence Extraction",
+            "Contradiction Auditing",
+            "IEEE Word Document Generation"
+        ]
     }
-
-if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

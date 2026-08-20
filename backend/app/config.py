@@ -1,4 +1,5 @@
 import os
+import json
 from typing import List
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
@@ -28,10 +29,7 @@ class Settings(BaseModel):
 
     # Security & Tokens
     SECRET_KEY: str = Field(
-        default=os.getenv(
-            "SECRET_KEY",
-            "nexusai-production-super-secret-key-2026-secure-default",
-        ),
+        default=os.getenv("SECRET_KEY", os.getenv("AUTH_SECRET", "dev-only-change-me-in-production")),
         description="Cryptographic secret key for signing JWT tokens",
     )
     ALGORITHM: str = Field(default="HS256", description="JWT hashing algorithm")
@@ -72,7 +70,7 @@ class Settings(BaseModel):
 
     # Cross-Origin Resource Sharing
     CORS_ORIGINS: List[str] = Field(
-        default=["*"],
+        default_factory=lambda: _parse_cors_origins(),
         description="Permitted CORS origins",
     )
 
@@ -83,6 +81,21 @@ class Settings(BaseModel):
     @property
     def is_development(self) -> bool:
         return self.ENVIRONMENT.lower() == "development"
+
+
+def _parse_cors_origins() -> List[str]:
+    """Parse CORS_ORIGINS from environment, supporting JSON arrays and comma-separated strings."""
+    raw = os.getenv("CORS_ORIGINS", "")
+    if not raw:
+        return ["*"]
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, list):
+            return parsed
+    except (json.JSONDecodeError, TypeError):
+        pass
+    # Fallback: comma-separated
+    return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
 
 # Global singleton settings instance

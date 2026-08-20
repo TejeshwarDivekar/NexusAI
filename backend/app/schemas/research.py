@@ -46,6 +46,7 @@ class ContradictionOut(BaseModel):
 
 class ResearchRequest(BaseModel):
     query: str = Field(..., min_length=3)
+    conversation_id: Optional[str] = None
     project_id: Optional[int] = None
     question_id: Optional[int] = None
     document_ids: Optional[List[int]] = None
@@ -61,12 +62,14 @@ class ResearchTaskStatus(BaseModel):
     progress_percentage: int
     sub_queries: List[str] = []
     sources_count: int = 0
-    created_at: datetime.datetime
-    completed_at: Optional[datetime.datetime] = None
+    evidence_count: int = 0
+    contradictions_count: int = 0
+    error: Optional[str] = None
 
 
 class ResearchResult(BaseModel):
     task_id: str
+    conversation_id: Optional[str] = None
     query: str
     status: str
     project_id: Optional[int] = None
@@ -77,16 +80,11 @@ class ResearchResult(BaseModel):
     evidence_matrix: List[Dict[str, Any]] = []
     claims: List[Dict[str, Any]] = []
     contradictions: List[Dict[str, Any]] = []
-    
-    # Research Quality Evaluation Metrics
-    quality_score: float = 92.0
-    source_diversity_score: float = 88.0
-    evidence_coverage_score: float = 94.0
-
-    # Generated IEEE Word Document metadata & link
+    quality_score: Optional[float] = 92.0
+    source_diversity_score: Optional[float] = 88.0
+    evidence_coverage_score: Optional[float] = 94.0
     docx_download_url: Optional[str] = None
     generated_documents: List[GeneratedDocumentOut] = []
-
     token_usage: Dict[str, Any] = {}
     cost_estimate: float = 0.0
     created_at: datetime.datetime

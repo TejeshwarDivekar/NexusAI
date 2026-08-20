@@ -62,15 +62,15 @@ export function ResearchComposer({
         border: "1px solid var(--border-primary)",
         borderRadius: "var(--radius-lg)",
         boxShadow: "var(--shadow-sm)",
-        padding: "20px 24px",
+        padding: "16px",
         width: "100%",
         display: "flex",
         flexDirection: "column",
-        gap: "16px",
+        gap: "14px",
       }}
     >
       {/* Header & Prompt Title */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <div
             style={{
@@ -93,13 +93,13 @@ export function ResearchComposer({
         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           <ShieldCheck size={14} color="var(--success)" />
           <span style={{ fontSize: "12px", color: "var(--text-tertiary)", fontWeight: 500 }}>
-            Deterministic Evidence Grounding Active
+            Deterministic Evidence Grounding
           </span>
         </div>
       </div>
 
       {/* Main Textarea */}
-      <div style={{ position: "relative" }}>
+      <div style={{ position: "relative", width: "100%" }}>
         <textarea
           rows={3}
           value={query}
@@ -108,7 +108,7 @@ export function ResearchComposer({
           placeholder="What research inquiry or scientific hypothesis would you like to investigate? (e.g. Compare memory efficiency in KV-cache quantization for long-context LLMs)"
           style={{
             width: "100%",
-            fontSize: "15px",
+            fontSize: "14.5px",
             lineHeight: 1.6,
             color: "var(--text-primary)",
             backgroundColor: "var(--bg-subtle)",
@@ -138,11 +138,11 @@ export function ResearchComposer({
           alignItems: "center",
           justifyContent: "space-between",
           flexWrap: "wrap",
-          gap: "12px",
+          gap: "10px",
         }}
       >
         {/* Scope Selectors */}
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
           <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-tertiary)" }}>
             Scope:
           </span>
@@ -153,20 +153,20 @@ export function ResearchComposer({
             style={{
               display: "inline-flex",
               alignItems: "center",
-              gap: "6px",
-              padding: "4px 10px",
+              gap: "5px",
+              padding: "6px 10px",
               borderRadius: "var(--radius-full)",
-              fontSize: "12.5px",
+              fontSize: "12px",
               fontWeight: 500,
               cursor: "pointer",
               border: `1px solid ${scope.includeAcademic ? "var(--accent-primary)" : "var(--border-primary)"}`,
               backgroundColor: scope.includeAcademic ? "var(--accent-subtle)" : "transparent",
               color: scope.includeAcademic ? "var(--accent-primary)" : "var(--text-secondary)",
-              transition: "all 0.15s ease",
+              minHeight: "36px",
             }}
           >
             <BookOpen size={13} />
-            <span>Academic (arXiv/PubMed)</span>
+            <span>Academic</span>
           </button>
 
           <button
@@ -175,20 +175,20 @@ export function ResearchComposer({
             style={{
               display: "inline-flex",
               alignItems: "center",
-              gap: "6px",
-              padding: "4px 10px",
+              gap: "5px",
+              padding: "6px 10px",
               borderRadius: "var(--radius-full)",
-              fontSize: "12.5px",
+              fontSize: "12px",
               fontWeight: 500,
               cursor: "pointer",
               border: `1px solid ${scope.includeWeb ? "var(--accent-primary)" : "var(--border-primary)"}`,
               backgroundColor: scope.includeWeb ? "var(--accent-subtle)" : "transparent",
               color: scope.includeWeb ? "var(--accent-primary)" : "var(--text-secondary)",
-              transition: "all 0.15s ease",
+              minHeight: "36px",
             }}
           >
             <Globe size={13} />
-            <span>Web & Industry</span>
+            <span>Web</span>
           </button>
 
           <button
@@ -203,25 +203,25 @@ export function ResearchComposer({
             style={{
               display: "inline-flex",
               alignItems: "center",
-              gap: "6px",
-              padding: "4px 10px",
+              gap: "5px",
+              padding: "6px 10px",
               borderRadius: "var(--radius-full)",
-              fontSize: "12.5px",
+              fontSize: "12px",
               fontWeight: 500,
               cursor: "pointer",
               border: `1px solid ${scope.includeDocuments ? "var(--accent-primary)" : "var(--border-primary)"}`,
               backgroundColor: scope.includeDocuments ? "var(--accent-subtle)" : "transparent",
               color: scope.includeDocuments ? "var(--accent-primary)" : "var(--text-secondary)",
-              transition: "all 0.15s ease",
+              minHeight: "36px",
             }}
           >
             <FileText size={13} />
-            <span>Uploaded Docs ({uploadedDocCount})</span>
+            <span>Docs ({uploadedDocCount})</span>
           </button>
         </div>
 
-        {/* Depth Selector & Advanced Toggle */}
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        {/* Depth Selector & Options */}
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <div
             style={{
               display: "inline-flex",
@@ -238,7 +238,7 @@ export function ResearchComposer({
                 type="button"
                 onClick={() => onDepthChange(d)}
                 style={{
-                  padding: "4px 8px",
+                  padding: "5px 9px",
                   fontSize: "12px",
                   fontWeight: depth === d ? 600 : 500,
                   borderRadius: "var(--radius-sm)",
@@ -248,6 +248,7 @@ export function ResearchComposer({
                   cursor: "pointer",
                   textTransform: "capitalize",
                   boxShadow: depth === d ? "var(--shadow-xs)" : "none",
+                  minHeight: "32px",
                 }}
               >
                 {d}
@@ -269,79 +270,83 @@ export function ResearchComposer({
               color: "var(--text-secondary)",
               fontSize: "12.5px",
               cursor: "pointer",
+              minHeight: "36px",
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-hover)")}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
           >
             <SlidersHorizontal size={13} />
-            <span>Options</span>
+            <span className="mobile-hide">Options</span>
             {showAdvanced ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
           </button>
         </div>
       </div>
 
-      {/* Advanced Progressive Disclosure Options */}
+      {/* Advanced Drawer */}
       {showAdvanced && (
         <div
-          className="animate-fade-in"
           style={{
-            padding: "14px",
+            padding: "12px 14px",
             borderRadius: "var(--radius-md)",
             backgroundColor: "var(--bg-subtle)",
             border: "1px solid var(--border-primary)",
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-            gap: "12px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "10px",
           }}
         >
-          <div>
-            <label style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-secondary)", display: "block", marginBottom: "4px" }}>
-              Focus Sub-domain
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px" }}>
+            <label style={{ fontSize: "12.5px", fontWeight: 600, color: "var(--text-secondary)" }}>
+              Synthesis Focus Area:
             </label>
             <select
               value={focusArea}
               onChange={(e) => setFocusArea(e.target.value)}
               style={{
-                width: "100%",
-                padding: "6px 8px",
+                fontSize: "12px",
+                padding: "4px 8px",
                 borderRadius: "var(--radius-sm)",
                 border: "1px solid var(--border-primary)",
                 backgroundColor: "var(--bg-surface)",
                 color: "var(--text-primary)",
-                fontSize: "13px",
                 outline: "none",
+                minHeight: "36px",
               }}
             >
-              <option value="all">Comprehensive / Multi-disciplinary</option>
-              <option value="methodology">Methodology & Mathematical Proofs</option>
-              <option value="benchmarks">Empirical Benchmarks & Datasets</option>
-              <option value="limitations">Limitations & Trade-off Analysis</option>
+              <option value="all">Comprehensive Analysis</option>
+              <option value="architecture">Architecture & Methods</option>
+              <option value="benchmarks">Benchmarks & Empirical Metrics</option>
+              <option value="limitations">Limitations & Open Problems</option>
             </select>
-          </div>
-
-          <div>
-            <label style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-secondary)", display: "block", marginBottom: "4px" }}>
-              Citation Strictness
-            </label>
-            <div style={{ fontSize: "13px", color: "var(--text-secondary)", padding: "6px 0" }}>
-              Deterministic quote matching & verification enforced
-            </div>
           </div>
         </div>
       )}
 
-      {/* Submit Button & Shortcut Indicator */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", borderTop: "1px solid var(--border-primary)", paddingTop: "14px" }}>
+      {/* Submit Button */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "flex-end",
+          borderTop: "1px solid var(--border-primary)",
+          paddingTop: "12px",
+        }}
+      >
         <Button
+          type="submit"
           variant="primary"
           size="md"
           isLoading={isLoading}
-          onClick={onSubmit}
-          disabled={!query.trim()}
+          disabled={!query.trim() || isLoading}
           rightIcon={<ArrowRight size={15} />}
-          shortcut="⌘ Enter"
+          onClick={onSubmit}
+          style={{
+            width: "100%",
+            maxWidth: "240px",
+            minHeight: "44px",
+            fontSize: "14px",
+            fontWeight: 600,
+          }}
         >
-          Run Deep Research
+          Start Research
         </Button>
       </div>
     </div>

@@ -65,7 +65,7 @@ export function ReportViewer({
   const handleDownloadDocx = () => {
     if (!taskId) return;
     setIsDownloading(true);
-    const downloadUrl = `http://localhost:8000/api/v1/research/tasks/${taskId}/document/download`;
+    const downloadUrl = `/api/v1/research/tasks/${taskId}/document/download`;
     window.open(downloadUrl, "_blank");
     setTimeout(() => setIsDownloading(false), 1500);
   };

@@ -7,9 +7,9 @@ RUN npm ci
 
 COPY . .
 
-# Build with webpack flag as specified in package.json
 ARG BACKEND_INTERNAL_URL=http://127.0.0.1:8000
 ENV BACKEND_INTERNAL_URL=${BACKEND_INTERNAL_URL}
+ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN npm run build
 
@@ -18,6 +18,8 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
+ENV PORT=3000
+ENV NEXT_TELEMETRY_DISABLED=1
 
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/.next ./.next
@@ -28,4 +30,4 @@ COPY --from=builder /app/src/auth.ts ./src/auth.ts
 
 EXPOSE 3000
 
-CMD ["npm", "run", "start"]
+CMD ["sh", "-c", "npx next start -p ${PORT:-3000}"]

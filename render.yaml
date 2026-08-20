@@ -1,0 +1,66 @@
+# Render.com Blueprint — AI Research Assistant
+# Deploy both services + PostgreSQL with one click
+# See: https://render.com/docs/blueprint-spec
+
+databases:
+  - name: nexusai-db
+    plan: free
+    databaseName: nexusai_db
+    user: nexus
+    postgresMajorVersion: "16"
+
+services:
+  # FastAPI Backend
+  - type: web
+    name: nexusai-backend
+    plan: free
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile.backend
+    dockerContext: ./backend
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nexusai-db
+          property: connectionURI
+      - key: SECRET_KEY
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: GOOGLE_GENERATIVE_AI_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: ENVIRONMENT
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+      - key: CORS_ORIGINS
+        value: '["*"]'
+    healthCheckPath: /api/v1/health
+
+  # Next.js Frontend
+  - type: web
+    name: nexusai-frontend
+    plan: free
+    runtime: docker
+    dockerfilePath: ./Dockerfile.frontend
+    dockerContext: .
+    envVars:
+      - key: BACKEND_INTERNAL_URL
+        fromService:
+          name: nexusai-backend
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: AUTH_SECRET
+        sync: false
+      - key: AUTH_TRUST_HOST
+        value: "true"
+      - key: NEXTAUTH_URL
+        fromService:
+          name: nexusai-frontend
+          type: web
+          property: host
+      - key: AUTH_GOOGLE_ID
+        sync: false
+      - key: AUTH_GOOGLE_SECRET
+        sync: false

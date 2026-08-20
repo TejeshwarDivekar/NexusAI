@@ -1,63 +1,79 @@
-version: '3.8'
+# =============================================================================
+# Docker Compose for Production Deployment
+# =============================================================================
+# This file is used for:
+# 1. Local development: docker compose up
+# 2. Railway/cloud deployment reference
+# =============================================================================
 
 services:
-  # 1. API Gateway / Reverse Proxy
-  gateway:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      - frontend
-      - backend
-
-  # 2. Next.js Frontend
-  frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
-    ports:
-      - "3000:3000"
+  # ---------------------------------------------------------------------------
+  # PostgreSQL Database
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
-    depends_on:
-      - backend
+      POSTGRES_DB: nexusai_db
+      POSTGRES_USER: nexus
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nexuspass}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexus -d nexusai_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  # 3. FastAPI Backend API & Research Engine
+  # ---------------------------------------------------------------------------
+  # FastAPI Backend
+  # ---------------------------------------------------------------------------
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile.backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://nexus:${POSTGRES_PASSWORD:-nexuspass}@postgres:5432/nexusai_db
+      SECRET_KEY: ${SECRET_KEY}
+      GOOGLE_API_KEY: ${GOOGLE_GENERATIVE_AI_API_KEY}
+      GOOGLE_GENERATIVE_AI_API_KEY: ${GOOGLE_GENERATIVE_AI_API_KEY}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ENVIRONMENT: production
+      LOG_LEVEL: INFO
+      CORS_ORIGINS: ${CORS_ORIGINS:-["*"]}
     ports:
       - "8000:8000"
-    environment:
-      - DATABASE_URL=postgresql://nexus:nexuspass@postgres:5432/nexusai_db
-      - REDIS_URL=redis://redis:6379/0
-      - GOOGLE_GENERATIVE_AI_API_KEY=${GOOGLE_GENERATIVE_AI_API_KEY}
-      - TAVILY_API_KEY=${TAVILY_API_KEY}
-      - SECRET_KEY=nexusai-production-secret-key-2026
+
+  # ---------------------------------------------------------------------------
+  # Next.js Frontend
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        BACKEND_INTERNAL_URL: http://backend:8000
+    restart: unless-stopped
     depends_on:
-      - postgres
-      - redis
-
-  # 4. PostgreSQL Database
-  postgres:
-    image: postgres:15-alpine
+      - backend
     environment:
-      POSTGRES_USER: nexus
-      POSTGRES_PASSWORD: nexuspass
-      POSTGRES_DB: nexusai_db
+      BACKEND_INTERNAL_URL: http://backend:8000
+      AUTH_SECRET: ${AUTH_SECRET}
+      AUTH_TRUST_HOST: "true"
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      AUTH_GOOGLE_ID: ${AUTH_GOOGLE_ID}
+      AUTH_GOOGLE_SECRET: ${AUTH_GOOGLE_SECRET}
+      AUTH_GITHUB_ID: ${AUTH_GITHUB_ID:-}
+      AUTH_GITHUB_SECRET: ${AUTH_GITHUB_SECRET:-}
     ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-  # 5. Redis Cache & Job Broker
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
+      - "3000:3000"
 
 volumes:
-  postgres_data:
+  pgdata:

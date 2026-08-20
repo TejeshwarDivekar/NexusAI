@@ -1,14 +1,17 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
+import { useSession, signOut } from "next-auth/react";
 import {
   Search,
   FolderKanban,
   HelpCircle,
-  Command,
   Plus,
-  Sparkles,
   ChevronRight,
+  Menu,
+  LogIn,
+  LogOut,
+  User,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -19,7 +22,8 @@ export interface TopBarProps {
   onOpenShortcuts: () => void;
   onNewResearch: () => void;
   onOpenProjects: () => void;
-  userEmail?: string;
+  onToggleMobileMenu?: () => void;
+  onOpenLogin: () => void;
 }
 
 export function TopBar({
@@ -28,8 +32,37 @@ export function TopBar({
   onOpenShortcuts,
   onNewResearch,
   onOpenProjects,
-  userEmail = "researcher@nexusai.com",
+  onToggleMobileMenu,
+  onOpenLogin,
 }: TopBarProps) {
+  const { data: session, status } = useSession();
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
+
+  // Check localStorage native user if next-auth is not active
+  const [nativeUser, setNativeUser] = useState<any>(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("nexus_user_info");
+      return stored ? JSON.parse(stored) : null;
+    }
+    return null;
+  });
+
+  const currentUser = session?.user || nativeUser;
+  const isLoggedIn = status === "authenticated" || !!currentUser;
+
+  const handleLogout = async () => {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("nexus_jwt_token");
+      localStorage.removeItem("nexus_user_info");
+    }
+    setNativeUser(null);
+    if (status === "authenticated") {
+      await signOut({ callbackUrl: "/" });
+    } else {
+      window.location.reload();
+    }
+  };
+
   return (
     <header
       style={{
@@ -39,19 +72,44 @@ export function TopBar({
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
-        padding: "0 16px",
+        padding: "0 12px",
         flexShrink: 0,
         zIndex: 20,
+        position: "relative",
       }}
     >
-      {/* Left: Project Context & Breadcrumb */}
-      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+      {/* Left: Mobile Menu Button + Project Context */}
+      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+        {/* Mobile Hamburger Button */}
+        {onToggleMobileMenu && (
+          <button
+            onClick={onToggleMobileMenu}
+            aria-label="Toggle navigation menu"
+            className="md-hide"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: "36px",
+              height: "36px",
+              borderRadius: "var(--radius-sm)",
+              border: "1px solid var(--border-primary)",
+              background: "var(--bg-subtle)",
+              color: "var(--text-primary)",
+              cursor: "pointer",
+              minWidth: "36px",
+            }}
+          >
+            <Menu size={18} />
+          </button>
+        )}
+
         <button
           onClick={onOpenProjects}
           style={{
             display: "flex",
             alignItems: "center",
-            gap: "6px",
+            gap: "5px",
             padding: "4px 8px",
             borderRadius: "var(--radius-sm)",
             border: "1px solid transparent",
@@ -71,17 +129,18 @@ export function TopBar({
           }}
         >
           <FolderKanban size={14} color="var(--accent-primary)" />
-          <span>Projects</span>
+          <span className="mobile-hide">Projects</span>
         </button>
 
-        <ChevronRight size={13} color="var(--text-tertiary)" />
+        <ChevronRight size={13} color="var(--text-tertiary)" className="mobile-hide" />
 
         <div
+          className="mobile-hide"
           style={{
             fontSize: "13.5px",
             fontWeight: 600,
             color: "var(--text-primary)",
-            maxWidth: "260px",
+            maxWidth: "180px",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
@@ -91,8 +150,15 @@ export function TopBar({
         </div>
       </div>
 
-      {/* Center: Global Search / Command Palette Bar */}
-      <div style={{ flex: 1, maxWidth: "380px", margin: "0 16px" }}>
+      {/* Center: Search Bar (Desktop only) */}
+      <div
+        className="mobile-hide"
+        style={{
+          flex: 1,
+          maxWidth: "340px",
+          margin: "0 12px",
+        }}
+      >
         <button
           onClick={onOpenCommandPalette}
           style={{
@@ -109,18 +175,10 @@ export function TopBar({
             cursor: "pointer",
             transition: "all 0.15s ease",
           }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = "var(--bg-hover)";
-            e.currentTarget.style.borderColor = "var(--border-secondary)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = "var(--bg-subtle)";
-            e.currentTarget.style.borderColor = "var(--border-primary)";
-          }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <Search size={14} />
-            <span>Search or type a command...</span>
+            <span>Search or command...</span>
           </div>
           <div
             style={{
@@ -136,66 +194,153 @@ export function TopBar({
               color: "var(--text-secondary)",
             }}
           >
-            <span>⌘</span>
-            <span>K</span>
+            <span>⌘K</span>
           </div>
         </button>
       </div>
 
       {/* Right Actions */}
-      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
         <Button
           variant="primary"
           size="sm"
           leftIcon={<Plus size={14} />}
           onClick={onNewResearch}
+          style={{ minHeight: "36px" }}
         >
-          New Research
+          <span className="mobile-hide">New Research</span>
+          <span className="mobile-only">New</span>
         </Button>
-
-        <button
-          onClick={onOpenShortcuts}
-          aria-label="Keyboard Shortcuts"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: "32px",
-            height: "32px",
-            borderRadius: "var(--radius-sm)",
-            border: "1px solid var(--border-primary)",
-            background: "var(--bg-subtle)",
-            color: "var(--text-secondary)",
-            cursor: "pointer",
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-hover)")}
-          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-subtle)")}
-        >
-          <HelpCircle size={15} />
-        </button>
 
         <ThemeToggle />
 
-        {/* User Badge */}
-        <div
-          style={{
-            width: "32px",
-            height: "32px",
-            borderRadius: "var(--radius-full)",
-            backgroundColor: "var(--accent-subtle)",
-            color: "var(--accent-primary)",
-            border: "1px solid var(--accent-border)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: "12px",
-            fontWeight: 650,
-            userSelect: "none",
-          }}
-          title={userEmail}
-        >
-          {userEmail.substring(0, 2).toUpperCase()}
-        </div>
+        {/* Real User Profile / Login Button */}
+        {isLoggedIn ? (
+          <div style={{ position: "relative" }}>
+            <button
+              onClick={() => setShowUserDropdown(!showUserDropdown)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                border: "1px solid var(--border-primary)",
+                background: "var(--bg-subtle)",
+                borderRadius: "var(--radius-full)",
+                padding: "2px 8px 2px 2px",
+                cursor: "pointer",
+                minHeight: "36px",
+              }}
+            >
+              {currentUser.image ? (
+                <img
+                  src={currentUser.image}
+                  alt={currentUser.name || "User"}
+                  style={{ width: "28px", height: "28px", borderRadius: "50%", objectFit: "cover" }}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: "28px",
+                    height: "28px",
+                    borderRadius: "50%",
+                    backgroundColor: "var(--accent-subtle)",
+                    color: "var(--accent-primary)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                  }}
+                >
+                  {(currentUser.name || currentUser.username || currentUser.email || "US")
+                    .substring(0, 2)
+                    .toUpperCase()}
+                </div>
+              )}
+              <span
+                className="mobile-hide"
+                style={{
+                  fontSize: "12.5px",
+                  fontWeight: 600,
+                  color: "var(--text-primary)",
+                  maxWidth: "110px",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {currentUser.name || currentUser.username || currentUser.email?.split("@")[0]}
+              </span>
+            </button>
+
+            {/* User Dropdown */}
+            {showUserDropdown && (
+              <div
+                style={{
+                  position: "absolute",
+                  right: 0,
+                  top: "42px",
+                  width: "200px",
+                  backgroundColor: "var(--bg-surface)",
+                  border: "1px solid var(--border-primary)",
+                  borderRadius: "var(--radius-md)",
+                  boxShadow: "var(--shadow-lg)",
+                  padding: "8px",
+                  zIndex: 100,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "4px",
+                }}
+              >
+                <div style={{ padding: "6px 8px", borderBottom: "1px solid var(--border-subtle)" }}>
+                  <div style={{ fontSize: "13px", fontWeight: 650, color: "var(--text-primary)" }}>
+                    {currentUser.name || currentUser.username || "Researcher"}
+                  </div>
+                  <div style={{ fontSize: "11px", color: "var(--text-tertiary)", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {currentUser.email || ""}
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setShowUserDropdown(false);
+                    handleLogout();
+                  }}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    width: "100%",
+                    padding: "8px 10px",
+                    borderRadius: "var(--radius-sm)",
+                    border: "none",
+                    background: "transparent",
+                    color: "var(--danger-text, #ef4444)",
+                    fontSize: "13px",
+                    fontWeight: 550,
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-hover)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                >
+                  <LogOut size={14} />
+                  <span>Sign Out</span>
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            leftIcon={<LogIn size={13} />}
+            onClick={onOpenLogin}
+            style={{ minHeight: "36px" }}
+          >
+            <span>Sign In</span>
+          </Button>
+        )}
       </div>
     </header>
   );

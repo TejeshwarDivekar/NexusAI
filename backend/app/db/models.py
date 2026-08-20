@@ -1,4 +1,5 @@
 import datetime
+import uuid
 from sqlalchemy import (
     Column, Integer, String, Text, DateTime, ForeignKey, JSON, Boolean, Float
 )
@@ -10,16 +11,47 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
-    email = Column(String, unique=True, index=True, nullable=False)
+    provider_user_id = Column(String, unique=True, index=True, nullable=True)
+    name = Column(String, nullable=True)
     username = Column(String, nullable=False)
-    hashed_password = Column(String, nullable=False)
+    email = Column(String, unique=True, index=True, nullable=False)
+    profile_image = Column(String, nullable=True)
+    hashed_password = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
+    conversations = relationship("Conversation", back_populates="user", cascade="all, delete-orphan", order_by="desc(Conversation.updated_at)")
     projects = relationship("Project", back_populates="owner", cascade="all, delete-orphan")
     documents = relationship("DocumentFile", back_populates="user", cascade="all, delete-orphan")
     generated_documents = relationship("GeneratedDocument", back_populates="user", cascade="all, delete-orphan")
+    tasks = relationship("ResearchTask", back_populates="user", cascade="all, delete-orphan")
+
+
+class Conversation(Base):
+    __tablename__ = "conversations"
+
+    id = Column(String, primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String, nullable=False, default="New Research Inquiry")
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    user = relationship("User", back_populates="conversations")
+    messages = relationship("Message", back_populates="conversation", cascade="all, delete-orphan", order_by="Message.created_at")
+    tasks = relationship("ResearchTask", back_populates="conversation", cascade="all, delete-orphan", order_by="ResearchTask.created_at")
+
+
+class Message(Base):
+    __tablename__ = "messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    conversation_id = Column(String, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True)
+    role = Column(String, nullable=False)  # user, assistant, system
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    conversation = relationship("Conversation", back_populates="messages")
 
 
 class Project(Base):
@@ -28,7 +60,7 @@ class Project(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, nullable=False)
     description = Column(Text, nullable=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
@@ -43,7 +75,7 @@ class ResearchQuestion(Base):
     __tablename__ = "research_questions"
 
     id = Column(Integer, primary_key=True, index=True)
-    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
     question_text = Column(Text, nullable=False)
     objectives = Column(JSON, default=list)  # list of strings
     status = Column(String, default="active")  # active, completed, archived
@@ -58,8 +90,8 @@ class DocumentFile(Base):
     __tablename__ = "document_files"
 
     id = Column(Integer, primary_key=True, index=True)
-    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     filename = Column(String, nullable=False)
     file_type = Column(String, nullable=False)
     file_size = Column(Integer, nullable=False)
@@ -78,12 +110,12 @@ class DocumentChunk(Base):
     __tablename__ = "document_chunks"
 
     id = Column(Integer, primary_key=True, index=True)
-    document_id = Column(Integer, ForeignKey("document_files.id"), nullable=False, index=True)
+    document_id = Column(Integer, ForeignKey("document_files.id", ondelete="CASCADE"), nullable=False, index=True)
     chunk_index = Column(Integer, nullable=False)
     content = Column(Text, nullable=False)
     page_number = Column(Integer, default=1)
     token_count = Column(Integer, default=0)
-    embedding_json = Column(JSON, nullable=True)  # vector representation for portable sqlite/pg
+    embedding_json = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     document = relationship("DocumentFile", back_populates="chunks")
@@ -93,7 +125,7 @@ class Source(Base):
     __tablename__ = "sources"
 
     id = Column(Integer, primary_key=True, index=True)
-    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True)
     title = Column(String, nullable=False)
     url = Column(Text, nullable=False)
     snippet = Column(Text, nullable=True)
@@ -111,9 +143,10 @@ class ResearchTask(Base):
     __tablename__ = "research_tasks"
 
     id = Column(String, primary_key=True, index=True)
-    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
-    question_id = Column(Integer, ForeignKey("research_questions.id"), nullable=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    conversation_id = Column(String, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True)
+    question_id = Column(Integer, ForeignKey("research_questions.id", ondelete="SET NULL"), nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     query = Column(Text, nullable=False)
     status = Column(String, default="pending")  # pending, planning, searching, analyzing, synthesizing, completed, failed
     current_step = Column(String, default="Initializing")
@@ -142,8 +175,10 @@ class ResearchTask(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)
 
+    conversation = relationship("Conversation", back_populates="tasks")
     project = relationship("Project", back_populates="tasks")
     question = relationship("ResearchQuestion", back_populates="tasks")
+    user = relationship("User", back_populates="tasks")
     claims_rel = relationship("Claim", back_populates="task", cascade="all, delete-orphan")
     contradictions_rel = relationship("Contradiction", back_populates="task", cascade="all, delete-orphan")
     generated_documents = relationship("GeneratedDocument", back_populates="task", cascade="all, delete-orphan")
@@ -153,7 +188,7 @@ class Claim(Base):
     __tablename__ = "claims"
 
     id = Column(Integer, primary_key=True, index=True)
-    task_id = Column(String, ForeignKey("research_tasks.id"), nullable=False, index=True)
+    task_id = Column(String, ForeignKey("research_tasks.id", ondelete="CASCADE"), nullable=False, index=True)
     claim_text = Column(Text, nullable=False)
     confidence_score = Column(Float, default=0.9)
     claim_type = Column(String, default="source_supported")  # source_supported, inference, unsupported, conflicting
@@ -167,7 +202,7 @@ class EvidenceItem(Base):
     __tablename__ = "evidence_items"
 
     id = Column(Integer, primary_key=True, index=True)
-    claim_id = Column(Integer, ForeignKey("claims.id"), nullable=False, index=True)
+    claim_id = Column(Integer, ForeignKey("claims.id", ondelete="CASCADE"), nullable=False, index=True)
     source_title = Column(String, nullable=False)
     source_url = Column(Text, nullable=False)
     exact_quote = Column(Text, nullable=False)
@@ -183,7 +218,7 @@ class Contradiction(Base):
     __tablename__ = "contradictions"
 
     id = Column(Integer, primary_key=True, index=True)
-    task_id = Column(String, ForeignKey("research_tasks.id"), nullable=False, index=True)
+    task_id = Column(String, ForeignKey("research_tasks.id", ondelete="CASCADE"), nullable=False, index=True)
     claim_a_text = Column(Text, nullable=False)
     claim_b_text = Column(Text, nullable=False)
     conflict_rationale = Column(Text, nullable=False)
@@ -197,8 +232,8 @@ class GeneratedDocument(Base):
     __tablename__ = "generated_documents"
 
     id = Column(Integer, primary_key=True, index=True)
-    task_id = Column(String, ForeignKey("research_tasks.id"), nullable=False, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    task_id = Column(String, ForeignKey("research_tasks.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     version = Column(Integer, default=1)
     file_name = Column(String, nullable=False)
     file_path = Column(String, nullable=False)

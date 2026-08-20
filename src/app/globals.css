@@ -48,6 +48,7 @@
 
   --danger: #EF4444;
   --danger-bg: #FEF2F2;
+  --danger-subtle: #FEF2F2;
   --danger-border: #FECACA;
   --danger-text: #B91C1C;
 
@@ -106,38 +107,36 @@
 
   /* Semantic State Colors */
   --success: #34D399;
-  --success-bg: rgba(16, 185, 129, 0.12);
-  --success-border: rgba(16, 185, 129, 0.25);
+  --success-bg: rgba(52, 211, 153, 0.1);
+  --success-border: rgba(52, 211, 153, 0.25);
   --success-text: #6EE7B7;
 
   --warning: #FBBF24;
-  --warning-bg: rgba(245, 158, 11, 0.12);
-  --warning-border: rgba(245, 158, 11, 0.25);
+  --warning-bg: rgba(251, 191, 36, 0.1);
+  --warning-border: rgba(251, 191, 36, 0.25);
   --warning-text: #FDE68A;
 
   --danger: #F87171;
-  --danger-bg: rgba(239, 68, 68, 0.12);
-  --danger-border: rgba(239, 68, 68, 0.25);
+  --danger-bg: rgba(248, 113, 113, 0.1);
+  --danger-subtle: rgba(248, 113, 113, 0.1);
+  --danger-border: rgba(248, 113, 113, 0.25);
   --danger-text: #FCA5A5;
 
   --info: #38BDF8;
-  --info-bg: rgba(14, 165, 233, 0.12);
-  --info-border: rgba(14, 165, 233, 0.25);
+  --info-bg: rgba(56, 189, 248, 0.1);
+  --info-border: rgba(56, 189, 248, 0.25);
   --info-text: #7DD3FC;
 
-  /* Shadows */
-  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
-  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.5);
-  --shadow-md: 0 4px 8px -1px rgba(0, 0, 0, 0.6);
-  --shadow-lg: 0 10px 20px -3px rgba(0, 0, 0, 0.7);
-  --shadow-xl: 0 20px 30px -5px rgba(0, 0, 0, 0.8);
-  --shadow-popover: 0 16px 40px rgba(0, 0, 0, 0.85);
+  /* Shadows (Dark Mode) */
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.4), 0 1px 2px -1px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.35), 0 2px 4px -2px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -4px rgba(0, 0, 0, 0.4);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+  --shadow-popover: 0 12px 32px rgba(0, 0, 0, 0.6);
 }
 
-/* ==========================================================================
-   BASE & TYPOGRAPHY STYLES
-   ========================================================================== */
-
+/* Base resets & typography */
 * {
   box-sizing: border-box;
   margin: 0;
@@ -146,18 +145,19 @@
 
 html, body {
   height: 100%;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  width: 100%;
+  overflow-x: hidden;
   background-color: var(--bg-app);
   color: var(--text-primary);
-  line-height: 1.5;
+  font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Custom Scrollbar */
+/* Custom Minimal Scrollbar */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -166,43 +166,41 @@ html, body {
 
 ::-webkit-scrollbar-thumb {
   background: var(--border-secondary);
-  border-radius: 9999px;
+  border-radius: var(--radius-full);
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-tertiary);
 }
 
-/* Selection */
-::selection {
-  background: rgba(59, 130, 246, 0.25);
-  color: var(--text-primary);
+/* Focus Ring Utility */
+.focus-ring:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
 }
 
-/* ==========================================================================
-   EDITORIAL & REPORT READING STYLES
-   ========================================================================== */
-
+/* Editorial Research Markdown Container */
 .editorial-report {
-  max-width: 760px;
-  margin: 0 auto;
-  font-size: 15px;
-  line-height: 1.75;
-  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 14.5px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .editorial-report h1 {
-  font-size: 26px;
+  font-size: 24px;
   font-weight: 700;
-  letter-spacing: -0.025em;
-  margin-top: 1.8em;
+  letter-spacing: -0.02em;
+  margin-top: 1.2em;
   margin-bottom: 0.6em;
   line-height: 1.3;
   color: var(--text-primary);
 }
 
 .editorial-report h2 {
-  font-size: 20px;
+  font-size: 19px;
   font-weight: 650;
   letter-spacing: -0.015em;
   margin-top: 1.6em;
@@ -213,7 +211,7 @@ html, body {
 }
 
 .editorial-report h3 {
-  font-size: 16px;
+  font-size: 15.5px;
   font-weight: 600;
   margin-top: 1.3em;
   margin-bottom: 0.4em;
@@ -308,4 +306,47 @@ html, body {
   background: var(--accent-primary);
   color: #FFFFFF;
   transform: translateY(-1px);
+}
+
+/* ==========================================================================
+   MOBILE RESPONSIVENESS (320px, 375px, 390px, 412px, 768px, 1024px, 1440px)
+   ========================================================================== */
+
+.mobile-only {
+  display: none !important;
+}
+
+@media (max-width: 767px) {
+  .mobile-hide {
+    display: none !important;
+  }
+  .mobile-only {
+    display: inline-flex !important;
+  }
+  .md-hide {
+    display: flex !important;
+  }
+
+  /* Responsive Sidebar Drawer */
+  .sidebar-root {
+    position: fixed !important;
+    top: 0 !important;
+    left: -280px !important;
+    bottom: 0 !important;
+    width: 280px !important;
+    height: 100vh !important;
+    z-index: 50 !important;
+    box-shadow: var(--shadow-xl) !important;
+    transition: left 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  }
+
+  .sidebar-root.mobile-open {
+    left: 0 !important;
+  }
+}
+
+@media (min-width: 768px) {
+  .md-hide {
+    display: none !important;
+  }
 }
