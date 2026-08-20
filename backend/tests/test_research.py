@@ -16,7 +16,7 @@ def test_research_run_and_evidence_matrix(client):
     assert len(res_data["sources"]) >= 1
     assert len(res_data["evidence_matrix"]) >= 1
     assert res_data["report_markdown"] is not None
-    assert "# Evidence-Grounded Research Report" in res_data["report_markdown"] or "Research Report" in res_data["report_markdown"]
+    assert "# Simple Answer" in res_data["report_markdown"] or "# Key Findings" in res_data["report_markdown"] or "Research Report" in res_data["report_markdown"]
 
     # Fetch task detail
     task_res = client.get(f"/api/v1/research/tasks/{task_id}")

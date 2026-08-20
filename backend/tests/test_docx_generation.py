@@ -76,7 +76,7 @@ def test_ieee_docx_generation_and_metadata(tmp_path):
 
     assert val_report["is_valid"] is True
     assert "I. INTRODUCTION" in val_report["sections_found"]
-    assert "II. RESEARCH METHODOLOGY" in val_report["sections_found"]
+    assert "II. RESEARCH QUESTION" in val_report["sections_found"]
     assert "REFERENCES" in val_report["sections_found"]
     assert val_report["references_count"] >= 2
     assert val_report["paragraphs_count"] > 10

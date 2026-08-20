@@ -80,14 +80,16 @@ async def run_research(
     user = current_user or get_or_create_default_user(db)
     
     # 1. Manage Conversation Association
-    convo = None
+    convo_id = None
     if request.conversation_id:
         convo = db.query(Conversation).filter(
             Conversation.id == request.conversation_id,
             Conversation.user_id == user.id
         ).first()
+        if convo:
+            convo_id = convo.id
 
-    if not convo:
+    if not convo_id:
         convo_id = str(uuid.uuid4())
         convo_title = generate_title_from_query(request.query)
         convo = Conversation(
@@ -99,17 +101,15 @@ async def run_research(
         )
         db.add(convo)
         db.commit()
-        db.refresh(convo)
 
     # Save User message to conversation
     user_msg = Message(
-        conversation_id=convo.id,
+        conversation_id=convo_id,
         role="user",
         content=request.query,
         created_at=datetime.datetime.utcnow()
     )
     db.add(user_msg)
-    convo.updated_at = datetime.datetime.utcnow()
     db.commit()
 
     # Fetch user documents if specified
@@ -147,7 +147,7 @@ async def run_research(
 
     task = ResearchTask(
         id=task_id,
-        conversation_id=convo.id,
+        conversation_id=convo_id,
         project_id=request.project_id,
         question_id=request.question_id,
         user_id=user.id,
@@ -228,6 +228,7 @@ async def run_research(
         claims=task.claims or [],
         contradictions=task.contradictions or [],
         summary=task.report_summary,
+        retrieval_timestamp=final_state.get("retrieval_timestamp"),
         version=1
     )
 

@@ -1,4 +1,5 @@
 import os
+import re
 from typing import Dict, Any, List
 import docx
 from app.core.logging import logger
@@ -7,18 +8,29 @@ from app.core.logging import logger
 class IEEEDocumentValidator:
     """
     Validates generated IEEE Word documents (.docx) for compliance:
-    1. File existence and non-zero size
+    1. File existence and non-zero size (> 1KB)
     2. Valid DOCX format (parsable by python-docx)
-    3. Mandatory sections present (Title, Abstract, Introduction, Methodology, Findings, References)
+    3. Mandatory sections present (Introduction, Methodology, Findings, References)
     4. Inline citations present and consistent with reference list
-    5. Zero fabricated or orphaned references
+    5. Zero placeholder text, zero "Lorem ipsum", zero fake citations
+    6. References match actual retrieved sources count
     """
 
     MANDATORY_SECTIONS = [
         "I. INTRODUCTION",
-        "II. RESEARCH METHODOLOGY",
-        "IV. EMPIRICAL FINDINGS",
+        "II. RESEARCH QUESTION",
+        "IV. METHODOLOGY",
+        "V. KEY FINDINGS",
         "REFERENCES"
+    ]
+
+    FORBIDDEN_PHRASES = [
+        "lorem ipsum",
+        "placeholder text",
+        "sample research paper",
+        "fake citation",
+        "demo answer",
+        "dummy text"
     ]
 
     @classmethod
@@ -53,8 +65,15 @@ class IEEEDocumentValidator:
             report["errors"].append(f"Failed to parse DOCX archive: {str(e)}")
             return report
 
-        # 3. Inspect paragraphs for mandatory sections
+        # 3. Inspect paragraphs for mandatory sections and forbidden placeholder text
         full_text = " ".join([p.text for p in doc.paragraphs])
+        
+        # Check forbidden phrases
+        for phrase in cls.FORBIDDEN_PHRASES:
+            if phrase in full_text.lower():
+                report["errors"].append(f"Forbidden placeholder phrase detected in document: '{phrase}'")
+
+        # Check mandatory sections
         for sec in cls.MANDATORY_SECTIONS:
             if sec in full_text:
                 report["sections_found"].append(sec)
@@ -62,7 +81,6 @@ class IEEEDocumentValidator:
                 report["errors"].append(f"Mandatory section missing: '{sec}'")
 
         # 4. Count inline citations and references
-        import re
         citations = re.findall(r'\[\d+\]', full_text)
         report["citations_found"] = len(citations)
 
@@ -79,7 +97,7 @@ class IEEEDocumentValidator:
         report["references_count"] = ref_count
 
         if ref_count == 0 and expected_sources_count > 0:
-            report["errors"].append("No formatted IEEE references found in REFERENCES section.")
+            report["errors"].append("No formatted references found in REFERENCES section.")
 
         report["is_valid"] = len(report["errors"]) == 0
         if report["is_valid"]:
