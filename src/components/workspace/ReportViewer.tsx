@@ -19,6 +19,8 @@ import {
   ArrowRight,
   HelpCircle,
   Clock,
+  CheckCircle2,
+  Loader2,
 } from "lucide-react";
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
 import { Button } from "@/components/ui/Button";
@@ -30,6 +32,7 @@ export interface ReportViewerProps {
   query: string;
   taskId?: string;
   docxDownloadUrl?: string;
+  pdfDownloadUrl?: string;
   sourcesCount?: number;
   evidenceCount?: number;
   qualityScore?: number;
@@ -40,12 +43,15 @@ export interface ReportViewerProps {
   onViewEvidence?: () => void;
 }
 
+type DownloadStep = "idle" | "generating" | "validating" | "formatting" | "ready";
+
 export function ReportViewer({
   markdownContent,
   summary,
   query,
   taskId,
   docxDownloadUrl,
+  pdfDownloadUrl,
   sourcesCount = 0,
   evidenceCount = 0,
   onCitationClick,
@@ -53,7 +59,8 @@ export function ReportViewer({
   onViewEvidence,
 }: ReportViewerProps) {
   const [copied, setCopied] = useState(false);
-  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadStep, setDownloadStep] = useState<DownloadStep>("idle");
+  const [downloadingFormat, setDownloadingFormat] = useState<"pdf" | "docx" | null>(null);
   const [showOverflowMenu, setShowOverflowMenu] = useState(false);
   const [shareFeedback, setShareFeedback] = useState<string | null>(null);
 
@@ -102,36 +109,70 @@ export function ReportViewer({
     setShowOverflowMenu(false);
   };
 
-  const handleDownloadDocx = () => {
+  const executeDownload = async (format: "pdf" | "docx") => {
     if (!taskId) return;
-    setIsDownloading(true);
-    const downloadUrl = docxDownloadUrl || `/api/v1/research/tasks/${taskId}/document/download`;
-    
-    fetch(downloadUrl)
-      .then((res) => {
-        if (!res.ok) throw new Error("Download failed");
-        return res.blob();
-      })
-      .then((blob) => {
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `IEEE_Research_Paper_${query.slice(0, 25).replace(/[^a-zA-Z0-9]/g, "_")}.docx`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-        setIsDownloading(false);
-      })
-      .catch(() => {
-        window.open(downloadUrl, "_blank");
-        setTimeout(() => setIsDownloading(false), 1500);
-      });
+    setDownloadingFormat(format);
+    setDownloadStep("generating");
+
+    // Progressive visual steps
+    await new Promise((r) => setTimeout(r, 400));
+    setDownloadStep("validating");
+    await new Promise((r) => setTimeout(r, 400));
+    setDownloadStep("formatting");
+
+    const defaultUrl = `/api/v1/research/tasks/${taskId}/document/download?format=${format}`;
+    const targetUrl = format === "pdf" ? (pdfDownloadUrl || defaultUrl) : (docxDownloadUrl || defaultUrl);
+
+    try {
+      const res = await fetch(targetUrl);
+      if (!res.ok) throw new Error("Download failed");
+      const blob = await res.blob();
+      
+      setDownloadStep("ready");
+      await new Promise((r) => setTimeout(r, 300));
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const ext = format === "pdf" ? "pdf" : "docx";
+      const prefix = format === "pdf" ? "Academic_Paper" : "IEEE_Research_Paper";
+      a.download = `${prefix}_${query.slice(0, 25).replace(/[^a-zA-Z0-9]/g, "_")}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      setTimeout(() => {
+        setDownloadStep("idle");
+        setDownloadingFormat(null);
+      }, 1000);
+    } catch (err) {
+      window.open(targetUrl, "_blank");
+      setTimeout(() => {
+        setDownloadStep("idle");
+        setDownloadingFormat(null);
+      }, 1500);
+    }
   };
 
   const handlePrint = () => {
     setShowOverflowMenu(false);
     window.print();
+  };
+
+  const getStepText = () => {
+    switch (downloadStep) {
+      case "generating":
+        return "Generating research document...";
+      case "validating":
+        return "Validating citations & sources...";
+      case "formatting":
+        return `Formatting academic ${downloadingFormat?.toUpperCase()}...`;
+      case "ready":
+        return `${downloadingFormat?.toUpperCase()} ready! Downloading...`;
+      default:
+        return "";
+    }
   };
 
   return (
@@ -143,6 +184,7 @@ export function ReportViewer({
         backgroundColor: "var(--bg-app)",
         overflow: "hidden",
         width: "100%",
+        position: "relative",
       }}
     >
       {/* Top Action Bar */}
@@ -194,17 +236,33 @@ export function ReportViewer({
         {/* Action Buttons */}
         <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
           {taskId && (
-            <Button
-              variant="primary"
-              size="sm"
-              leftIcon={<FileCheck2 size={14} />}
-              onClick={handleDownloadDocx}
-              isLoading={isDownloading}
-              style={{ minHeight: "40px" }}
-            >
-              <span className="mobile-hide">Download IEEE Word (.docx)</span>
-              <span className="mobile-only">Download Word</span>
-            </Button>
+            <>
+              {/* Download PDF Button */}
+              <Button
+                variant="primary"
+                size="sm"
+                leftIcon={<FileText size={14} />}
+                onClick={() => executeDownload("pdf")}
+                isLoading={downloadingFormat === "pdf" && downloadStep !== "idle"}
+                style={{ minHeight: "38px" }}
+              >
+                <span className="mobile-hide">Download PDF</span>
+                <span className="mobile-only">PDF</span>
+              </Button>
+
+              {/* Download Word Button */}
+              <Button
+                variant="outline"
+                size="sm"
+                leftIcon={<FileCheck2 size={14} />}
+                onClick={() => executeDownload("docx")}
+                isLoading={downloadingFormat === "docx" && downloadStep !== "idle"}
+                style={{ minHeight: "38px" }}
+              >
+                <span className="mobile-hide">Download Word (.docx)</span>
+                <span className="mobile-only">Word</span>
+              </Button>
+            </>
           )}
 
           {/* Desktop Actions */}
@@ -240,169 +298,119 @@ export function ReportViewer({
             </Button>
 
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
-              leftIcon={<Printer size={13} />}
               onClick={handlePrint}
-              style={{ minHeight: "36px" }}
+              title="Print research"
+              style={{ width: "36px", height: "36px", padding: 0 }}
             >
-              Print
+              <Printer size={14} />
             </Button>
           </div>
 
           {/* Mobile Overflow Menu */}
-          <div className="md-hide" style={{ position: "relative" }}>
-            <button
+          <div className="mobile-only" style={{ position: "relative" }}>
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => setShowOverflowMenu(!showOverflowMenu)}
-              aria-label="More actions"
-              className="touch-target"
-              style={{
-                width: "44px",
-                height: "44px",
-                borderRadius: "var(--radius-md)",
-                border: "1px solid var(--border-primary)",
-                backgroundColor: "var(--bg-subtle)",
-                color: "var(--text-secondary)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-              }}
+              style={{ width: "40px", height: "40px", padding: 0 }}
             >
-              <MoreVertical size={18} />
-            </button>
-
+              <MoreVertical size={16} />
+            </Button>
             {showOverflowMenu && (
               <div
                 style={{
                   position: "absolute",
                   right: 0,
-                  top: "48px",
+                  top: "100%",
+                  marginTop: "4px",
                   backgroundColor: "var(--bg-surface)",
                   border: "1px solid var(--border-primary)",
                   borderRadius: "var(--radius-md)",
                   boxShadow: "var(--shadow-lg)",
-                  padding: "6px",
-                  zIndex: 60,
-                  minWidth: "175px",
+                  zIndex: 50,
+                  minWidth: "150px",
                   display: "flex",
                   flexDirection: "column",
-                  gap: "2px",
+                  overflow: "hidden",
                 }}
               >
                 <button
+                  type="button"
                   onClick={handleCopy}
+                  className="touch-target"
                   style={{
+                    padding: "10px 14px",
                     display: "flex",
                     alignItems: "center",
                     gap: "8px",
-                    padding: "10px 12px",
-                    fontSize: "13px",
-                    color: "var(--text-primary)",
+                    background: "none",
                     border: "none",
-                    background: "transparent",
-                    cursor: "pointer",
-                    borderRadius: "var(--radius-sm)",
+                    color: "var(--text-primary)",
+                    fontSize: "13px",
                     textAlign: "left",
-                    minHeight: "44px",
                   }}
                 >
-                  {copied ? <Check size={15} color="var(--success)" /> : <Copy size={15} />}
+                  <Copy size={14} />
                   <span>{copied ? "Copied" : "Copy Answer"}</span>
                 </button>
-
                 <button
+                  type="button"
                   onClick={handleShare}
+                  className="touch-target"
                   style={{
+                    padding: "10px 14px",
                     display: "flex",
                     alignItems: "center",
                     gap: "8px",
-                    padding: "10px 12px",
-                    fontSize: "13px",
-                    color: "var(--text-primary)",
+                    background: "none",
                     border: "none",
-                    background: "transparent",
-                    cursor: "pointer",
-                    borderRadius: "var(--radius-sm)",
+                    color: "var(--text-primary)",
+                    fontSize: "13px",
                     textAlign: "left",
-                    minHeight: "44px",
                   }}
                 >
-                  <Share2 size={15} />
-                  <span>Share</span>
+                  <Share2 size={14} />
+                  <span>Share Link</span>
                 </button>
-
-                {onViewSources && (
-                  <button
-                    onClick={() => {
-                      setShowOverflowMenu(false);
-                      onViewSources();
-                    }}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      padding: "10px 12px",
-                      fontSize: "13px",
-                      color: "var(--text-primary)",
-                      border: "none",
-                      background: "transparent",
-                      cursor: "pointer",
-                      borderRadius: "var(--radius-sm)",
-                      textAlign: "left",
-                      minHeight: "44px",
-                    }}
-                  >
-                    <Layers size={15} />
-                    <span>View Sources ({sourcesCount})</span>
-                  </button>
-                )}
-
-                {onViewEvidence && (
-                  <button
-                    onClick={() => {
-                      setShowOverflowMenu(false);
-                      onViewEvidence();
-                    }}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      padding: "10px 12px",
-                      fontSize: "13px",
-                      color: "var(--text-primary)",
-                      border: "none",
-                      background: "transparent",
-                      cursor: "pointer",
-                      borderRadius: "var(--radius-sm)",
-                      textAlign: "left",
-                      minHeight: "44px",
-                    }}
-                  >
-                    <ShieldCheck size={15} />
-                    <span>View Evidence ({evidenceCount})</span>
-                  </button>
-                )}
-
                 <button
+                  type="button"
                   onClick={handleDownloadMarkdown}
+                  className="touch-target"
                   style={{
+                    padding: "10px 14px",
                     display: "flex",
                     alignItems: "center",
                     gap: "8px",
-                    padding: "10px 12px",
-                    fontSize: "13px",
-                    color: "var(--text-primary)",
+                    background: "none",
                     border: "none",
-                    background: "transparent",
-                    cursor: "pointer",
-                    borderRadius: "var(--radius-sm)",
+                    color: "var(--text-primary)",
+                    fontSize: "13px",
                     textAlign: "left",
-                    minHeight: "44px",
                   }}
                 >
-                  <Download size={15} />
-                  <span>Export Markdown</span>
+                  <Download size={14} />
+                  <span>Download .MD</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="touch-target"
+                  style={{
+                    padding: "10px 14px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    background: "none",
+                    border: "none",
+                    color: "var(--text-primary)",
+                    fontSize: "13px",
+                    textAlign: "left",
+                  }}
+                >
+                  <Printer size={14} />
+                  <span>Print View</span>
                 </button>
               </div>
             )}
@@ -410,129 +418,218 @@ export function ReportViewer({
         </div>
       </div>
 
-      {/* Share Toast */}
+      {/* Share / Copy Toast */}
       {shareFeedback && (
         <div
           style={{
-            padding: "8px 14px",
-            backgroundColor: "var(--accent-subtle)",
-            color: "var(--accent-primary)",
+            position: "absolute",
+            top: "56px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            backgroundColor: "var(--bg-elevated)",
+            border: "1px solid var(--border-primary)",
+            borderRadius: "var(--radius-md)",
+            padding: "6px 14px",
             fontSize: "12.5px",
-            fontWeight: 600,
-            textAlign: "center",
-            borderBottom: "1px solid var(--accent-border)",
+            color: "var(--text-primary)",
+            boxShadow: "var(--shadow-md)",
+            zIndex: 40,
           }}
         >
           {shareFeedback}
         </div>
       )}
 
-      {/* Center Answer-First Content Canvas */}
+      {/* Progressive Multi-Step Generation Toast */}
+      {downloadStep !== "idle" && (
+        <div
+          style={{
+            position: "absolute",
+            top: "54px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            backgroundColor: "var(--bg-elevated)",
+            border: "1px solid var(--accent-primary)",
+            borderRadius: "var(--radius-lg)",
+            padding: "10px 18px",
+            fontSize: "13px",
+            color: "var(--text-primary)",
+            boxShadow: "var(--shadow-lg)",
+            zIndex: 60,
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+          }}
+        >
+          {downloadStep === "ready" ? (
+            <CheckCircle2 size={16} color="var(--success)" />
+          ) : (
+            <Loader2 size={16} className="animate-spin" color="var(--accent-primary)" />
+          )}
+          <span style={{ fontWeight: 550 }}>{getStepText()}</span>
+        </div>
+      )}
+
+      {/* Main Content Area */}
       <div
         style={{
           flex: 1,
           overflowY: "auto",
-          padding: "18px 14px 40px 14px",
-          WebkitOverflowScrolling: "touch",
+          padding: "24px 20px 48px",
         }}
       >
-        <div
-          style={{
-            maxWidth: "820px",
-            margin: "0 auto",
-            backgroundColor: "var(--bg-surface)",
-            padding: "24px 22px",
-            borderRadius: "var(--radius-lg)",
-            border: "1px solid var(--border-primary)",
-            boxShadow: "var(--shadow-sm)",
-            wordBreak: "break-word",
-            display: "flex",
-            flexDirection: "column",
-            gap: "18px",
-          }}
-        >
-          {/* Research Title / Question */}
-          <div>
+        <div style={{ maxWidth: "780px", margin: "0 auto", width: "100%" }}>
+          {/* Question Banner */}
+          <div
+            style={{
+              padding: "16px 18px",
+              backgroundColor: "var(--bg-surface)",
+              borderRadius: "var(--radius-lg)",
+              border: "1px solid var(--border-primary)",
+              marginBottom: "16px",
+            }}
+          >
+            <div
+              style={{
+                fontSize: "11px",
+                fontWeight: 650,
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+                color: "var(--text-tertiary)",
+                marginBottom: "4px",
+              }}
+            >
+              Target Investigation
+            </div>
             <h1
               style={{
-                fontSize: "22px",
-                fontWeight: 750,
+                fontSize: "18px",
+                fontWeight: 700,
                 color: "var(--text-primary)",
                 lineHeight: 1.35,
-                margin: "0 0 10px 0",
-                letterSpacing: "-0.015em",
+                margin: 0,
               }}
             >
               {query}
             </h1>
+          </div>
 
-            {/* Subtle Real Research Metadata Row */}
+          {/* Quick Context & Evidence Stats Strip */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              flexWrap: "wrap",
+              marginBottom: "20px",
+              fontSize: "12px",
+            }}
+          >
+            {/* Evidence Strength Badge */}
             <div
               style={{
-                display: "flex",
+                display: "inline-flex",
                 alignItems: "center",
-                gap: "10px",
-                flexWrap: "wrap",
-                fontSize: "12.5px",
-                color: "var(--text-secondary)",
-                paddingBottom: "14px",
-                borderBottom: "1px solid var(--border-subtle)",
+                gap: "5px",
+                padding: "4px 10px",
+                borderRadius: "var(--radius-full)",
+                backgroundColor: evidenceStrength.bg,
+                border: `1px solid ${evidenceStrength.border}`,
+                color: evidenceStrength.color,
+                fontWeight: 600,
               }}
             >
-              <div
+              <ShieldCheck size={13} />
+              <span>{evidenceStrength.label} Evidence Strength</span>
+            </div>
+
+            {/* Sources count indicator */}
+            {sourcesCount > 0 && (
+              <button
+                type="button"
+                onClick={onViewSources}
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
                   gap: "5px",
-                  padding: "2px 8px",
+                  padding: "4px 10px",
                   borderRadius: "var(--radius-full)",
-                  backgroundColor: evidenceStrength.bg,
-                  color: evidenceStrength.color,
-                  border: `1px solid ${evidenceStrength.border}`,
-                  fontSize: "11.5px",
-                  fontWeight: 650,
+                  backgroundColor: "var(--bg-surface)",
+                  border: "1px solid var(--border-primary)",
+                  color: "var(--text-secondary)",
+                  cursor: onViewSources ? "pointer" : "default",
+                  fontSize: "12px",
                 }}
               >
-                <ShieldCheck size={12} />
-                <span>Evidence strength: {evidenceStrength.label}</span>
-              </div>
+                <BookOpen size={13} color="var(--accent-primary)" />
+                <span>{sourcesCount} Verified Sources</span>
+              </button>
+            )}
 
-              <span>•</span>
-
-              <span style={{ color: "var(--text-secondary)" }}>
-                Based on <strong style={{ color: "var(--text-primary)" }}>{sourcesCount}</strong> verified sources
-              </span>
-
-              {evidenceCount > 0 && (
-                <>
-                  <span>•</span>
-                  <span><strong style={{ color: "var(--text-primary)" }}>{evidenceCount}</strong> grounded claims</span>
-                </>
-              )}
-            </div>
+            {/* Evidence items count indicator */}
+            {evidenceCount > 0 && (
+              <button
+                type="button"
+                onClick={onViewEvidence}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "5px",
+                  padding: "4px 10px",
+                  borderRadius: "var(--radius-full)",
+                  backgroundColor: "var(--bg-surface)",
+                  border: "1px solid var(--border-primary)",
+                  color: "var(--text-secondary)",
+                  cursor: onViewEvidence ? "pointer" : "default",
+                  fontSize: "12px",
+                }}
+              >
+                <Award size={13} color="var(--success)" />
+                <span>{evidenceCount} Grounded Claims</span>
+              </button>
+            )}
           </div>
 
-          {/* Main Answer Stream (Answer-First) */}
-          <div className="editorial-report" style={{ fontSize: "15px" }}>
+          {/* Core Research Answer (Markdown Body) */}
+          <div
+            style={{
+              backgroundColor: "var(--bg-surface)",
+              borderRadius: "var(--radius-lg)",
+              border: "1px solid var(--border-primary)",
+              padding: "24px 24px",
+              boxShadow: "var(--shadow-xs)",
+              lineHeight: 1.65,
+              fontSize: "14.5px",
+              color: "var(--text-primary)",
+            }}
+          >
             <MarkdownRenderer
               content={markdownContent}
               onCitationClick={onCitationClick}
             />
           </div>
 
-          {/* Verification & Exploration Layer Footer */}
+          {/* Quick Deep-Dive & Document Export Cards */}
           <div
             style={{
-              marginTop: "20px",
-              paddingTop: "20px",
-              borderTop: "1px solid var(--border-primary)",
-              display: "flex",
-              flexDirection: "column",
-              gap: "12px",
+              marginTop: "24px",
+              padding: "16px 18px",
+              backgroundColor: "var(--bg-surface)",
+              borderRadius: "var(--radius-lg)",
+              border: "1px solid var(--border-primary)",
             }}
           >
-            <div style={{ fontSize: "13px", fontWeight: 650, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-              Verification & Detailed Documents
+            <div
+              style={{
+                fontSize: "12px",
+                fontWeight: 650,
+                color: "var(--text-secondary)",
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+                marginBottom: "12px",
+              }}
+            >
+              Academic Document Downloads & Verification
             </div>
 
             <div
@@ -542,15 +639,53 @@ export function ReportViewer({
                 gap: "10px",
               }}
             >
-              {onViewSources && (
+              {/* PDF Download Card */}
+              {taskId && (
                 <button
                   type="button"
-                  onClick={onViewSources}
+                  onClick={() => executeDownload("pdf")}
                   className="touch-target"
                   style={{
                     padding: "12px 14px",
                     borderRadius: "var(--radius-md)",
-                    backgroundColor: "var(--bg-subtle)",
+                    backgroundColor: "var(--bg-card)",
+                    border: "1px solid var(--accent-border)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    color: "var(--accent-primary)",
+                    cursor: "pointer",
+                    textAlign: "left",
+                    minHeight: "52px",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = "var(--accent-subtle)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = "var(--bg-card)";
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <FileText size={18} />
+                    <div>
+                      <div style={{ fontSize: "13px", fontWeight: 650 }}>Download Academic PDF</div>
+                      <div style={{ fontSize: "11px", color: "var(--text-secondary)" }}>Publication format with tables & summary</div>
+                    </div>
+                  </div>
+                  <Download size={14} />
+                </button>
+              )}
+
+              {/* Word DOCX Download Card */}
+              {taskId && (
+                <button
+                  type="button"
+                  onClick={() => executeDownload("docx")}
+                  className="touch-target"
+                  style={{
+                    padding: "12px 14px",
+                    borderRadius: "var(--radius-md)",
+                    backgroundColor: "var(--bg-card)",
                     border: "1px solid var(--border-primary)",
                     display: "flex",
                     alignItems: "center",
@@ -558,29 +693,30 @@ export function ReportViewer({
                     color: "var(--text-primary)",
                     cursor: "pointer",
                     textAlign: "left",
-                    minHeight: "48px",
+                    minHeight: "52px",
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.borderColor = "var(--accent-primary)";
-                    e.currentTarget.style.backgroundColor = "var(--bg-card)";
+                    e.currentTarget.style.backgroundColor = "var(--bg-subtle)";
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.borderColor = "var(--border-primary)";
-                    e.currentTarget.style.backgroundColor = "var(--bg-subtle)";
+                    e.currentTarget.style.backgroundColor = "var(--bg-card)";
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <Layers size={16} color="var(--accent-primary)" />
+                    <FileCheck2 size={18} color="var(--accent-primary)" />
                     <div>
-                      <div style={{ fontSize: "13px", fontWeight: 650 }}>View Sources</div>
-                      <div style={{ fontSize: "11.5px", color: "var(--text-tertiary)" }}>{sourcesCount} indexed papers & registries</div>
+                      <div style={{ fontSize: "13px", fontWeight: 650 }}>Download IEEE Word</div>
+                      <div style={{ fontSize: "11px", color: "var(--text-secondary)" }}>Editable Microsoft Word (.docx)</div>
                     </div>
                   </div>
-                  <ArrowRight size={14} color="var(--text-tertiary)" />
+                  <Download size={14} />
                 </button>
               )}
 
-              {onViewEvidence && (
+              {/* View Evidence Card */}
+              {evidenceCount > 0 && (
                 <button
                   type="button"
                   onClick={onViewEvidence}
@@ -596,7 +732,7 @@ export function ReportViewer({
                     color: "var(--text-primary)",
                     cursor: "pointer",
                     textAlign: "left",
-                    minHeight: "48px",
+                    minHeight: "52px",
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.borderColor = "var(--accent-primary)";
@@ -608,49 +744,13 @@ export function ReportViewer({
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <ShieldCheck size={16} color="var(--success)" />
+                    <ShieldCheck size={18} color="var(--success)" />
                     <div>
                       <div style={{ fontSize: "13px", fontWeight: 650 }}>Explore Evidence Matrix</div>
-                      <div style={{ fontSize: "11.5px", color: "var(--text-tertiary)" }}>{evidenceCount} exact verified quotes</div>
+                      <div style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>{evidenceCount} exact verified quotes</div>
                     </div>
                   </div>
                   <ArrowRight size={14} color="var(--text-tertiary)" />
-                </button>
-              )}
-
-              {taskId && (
-                <button
-                  type="button"
-                  onClick={handleDownloadDocx}
-                  className="touch-target"
-                  style={{
-                    padding: "12px 14px",
-                    borderRadius: "var(--radius-md)",
-                    backgroundColor: "var(--accent-subtle)",
-                    border: "1px solid var(--accent-border)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    color: "var(--accent-primary)",
-                    cursor: "pointer",
-                    textAlign: "left",
-                    minHeight: "48px",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = "var(--bg-card)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = "var(--accent-subtle)";
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <FileCheck2 size={16} />
-                    <div>
-                      <div style={{ fontSize: "13px", fontWeight: 650 }}>Download IEEE Word</div>
-                      <div style={{ fontSize: "11.5px", color: "var(--text-secondary)" }}>Complete formal academic paper (.docx)</div>
-                    </div>
-                  </div>
-                  <Download size={14} />
                 </button>
               )}
             </div>

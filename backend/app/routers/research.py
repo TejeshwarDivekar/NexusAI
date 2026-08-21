@@ -17,7 +17,9 @@ from app.schemas.research import (
     ResearchRequest, ResearchResult, ResearchTaskStatus, GeneratedDocumentOut
 )
 from app.services.research_engine import ResearchEngine
-from app.services.document_generation import IEEEDocumentGenerator, IEEEDocumentValidator
+from app.services.document_generation import (
+    IEEEDocumentGenerator, AcademicPDFGenerator, IEEEDocumentValidator, CitationValidator
+)
 from app.core.security import get_current_user_optional, get_current_user
 from app.core.exceptions import NotFoundException
 from app.core.logging import logger
@@ -218,7 +220,7 @@ async def run_research(
         )
         db.add(cont_obj)
 
-    # Automatic IEEE Word Document (.docx) Generation & Validation
+    # 1. Automatic IEEE Word Document (.docx) Generation & Validation
     docx_meta = IEEEDocumentGenerator.generate_docx(
         task_id=task.id,
         query=task.query,
@@ -229,16 +231,34 @@ async def run_research(
         contradictions=task.contradictions or [],
         summary=task.report_summary,
         retrieval_timestamp=final_state.get("retrieval_timestamp"),
-        version=1
+        author_name=user.name or user.username or "Principal Researcher",
+        version=1,
+        classification=final_state.get("classification")
     )
 
-    # Validate generated document
+    # 2. Automatic Academic Publication PDF Generation
+    pdf_meta = AcademicPDFGenerator.generate_pdf(
+        task_id=task.id,
+        query=task.query,
+        report_markdown=task.report_markdown or "",
+        sources=task.sources or [],
+        evidence_matrix=task.evidence_matrix or [],
+        claims=task.claims or [],
+        contradictions=task.contradictions or [],
+        summary=task.report_summary,
+        retrieval_timestamp=final_state.get("retrieval_timestamp"),
+        author_name=user.name or user.username or "Principal Researcher",
+        version=1,
+        classification=final_state.get("classification")
+    )
+
+    # Validate generated documents
     val_report = IEEEDocumentValidator.validate_docx(
         file_path=docx_meta["file_path"],
         expected_sources_count=len(task.sources or [])
     )
 
-    gen_doc = GeneratedDocument(
+    gen_doc_word = GeneratedDocument(
         task_id=task.id,
         user_id=user.id,
         version=1,
@@ -250,24 +270,54 @@ async def run_research(
         generation_status="completed" if val_report["is_valid"] else "failed",
         metadata_json=val_report
     )
-    db.add(gen_doc)
-    db.commit()
-    db.refresh(gen_doc)
+    db.add(gen_doc_word)
 
-    download_url = f"/api/v1/research/tasks/{task.id}/document/download"
-
-    doc_out = GeneratedDocumentOut(
-        id=gen_doc.id,
+    gen_doc_pdf = GeneratedDocument(
         task_id=task.id,
-        version=gen_doc.version,
-        file_name=gen_doc.file_name,
-        file_size=gen_doc.file_size,
-        sha256_hash=gen_doc.sha256_hash,
-        doc_format=gen_doc.doc_format,
-        generation_status=gen_doc.generation_status,
-        download_url=download_url,
-        created_at=gen_doc.created_at
+        user_id=user.id,
+        version=1,
+        file_name=pdf_meta["file_name"],
+        file_path=pdf_meta["file_path"],
+        file_size=pdf_meta["file_size"],
+        sha256_hash=pdf_meta["sha256_hash"],
+        doc_format="pdf",
+        generation_status="completed",
+        metadata_json=pdf_meta["metadata_json"]
     )
+    db.add(gen_doc_pdf)
+    db.commit()
+    db.refresh(gen_doc_word)
+    db.refresh(gen_doc_pdf)
+
+    docx_download_url = f"/api/v1/research/tasks/{task.id}/document/download?format=docx"
+    pdf_download_url = f"/api/v1/research/tasks/{task.id}/document/download?format=pdf"
+
+    doc_out_list = [
+        GeneratedDocumentOut(
+            id=gen_doc_pdf.id,
+            task_id=task.id,
+            version=gen_doc_pdf.version,
+            file_name=gen_doc_pdf.file_name,
+            file_size=gen_doc_pdf.file_size,
+            sha256_hash=gen_doc_pdf.sha256_hash,
+            doc_format=gen_doc_pdf.doc_format,
+            generation_status=gen_doc_pdf.generation_status,
+            download_url=pdf_download_url,
+            created_at=gen_doc_pdf.created_at
+        ),
+        GeneratedDocumentOut(
+            id=gen_doc_word.id,
+            task_id=task.id,
+            version=gen_doc_word.version,
+            file_name=gen_doc_word.file_name,
+            file_size=gen_doc_word.file_size,
+            sha256_hash=gen_doc_word.sha256_hash,
+            doc_format=gen_doc_word.doc_format,
+            generation_status=gen_doc_word.generation_status,
+            download_url=docx_download_url,
+            created_at=gen_doc_word.created_at
+        )
+    ]
 
     return ResearchResult(
         task_id=task.id,
@@ -285,8 +335,9 @@ async def run_research(
         quality_score=task.quality_score,
         source_diversity_score=task.source_diversity_score,
         evidence_coverage_score=task.evidence_coverage_score,
-        docx_download_url=download_url,
-        generated_documents=[doc_out],
+        docx_download_url=docx_download_url,
+        pdf_download_url=pdf_download_url,
+        generated_documents=doc_out_list,
         token_usage=task.token_usage or {},
         cost_estimate=task.cost_estimate or 0.0,
         created_at=task.created_at,
@@ -411,15 +462,16 @@ def get_task_contradictions(
 
 
 @router.get("/tasks/{task_id}/document/download")
-def download_ieee_document(
+def download_research_document(
     task_id: str,
+    format: str = "pdf",
     version: Optional[int] = None,
     current_user: Optional[User] = Depends(get_current_user_optional),
     db: Session = Depends(get_db)
 ):
     """
-    Downloads the automatically generated IEEE Microsoft Word document (.docx).
-    Enforces user isolation.
+    Downloads the automatically generated research document in publication-ready PDF or IEEE Word (.docx) format.
+    Enforces user isolation and performs on-demand compilation if file cache is cold.
     """
     task = db.query(ResearchTask).filter(ResearchTask.id == task_id).first()
     if not task:
@@ -428,36 +480,64 @@ def download_ieee_document(
     if current_user and task.user_id and task.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access to this document is forbidden.")
 
-    query_doc = db.query(GeneratedDocument).filter(GeneratedDocument.task_id == task_id)
+    target_format = "pdf" if format.lower() == "pdf" else "docx"
+    query_doc = db.query(GeneratedDocument).filter(
+        GeneratedDocument.task_id == task_id,
+        GeneratedDocument.doc_format == target_format
+    )
     if version:
         query_doc = query_doc.filter(GeneratedDocument.version == version)
     else:
         query_doc = query_doc.order_by(GeneratedDocument.version.desc())
 
     doc = query_doc.first()
-    if not doc or not os.path.exists(doc.file_path):
-        docx_meta = IEEEDocumentGenerator.generate_docx(
-            task_id=task.id,
-            query=task.query,
-            report_markdown=task.report_markdown or "",
-            sources=task.sources or [],
-            evidence_matrix=task.evidence_matrix or [],
-            claims=task.claims or [],
-            contradictions=task.contradictions or [],
-            summary=task.report_summary,
-            version=version or 1
-        )
+
+    if target_format == "pdf":
+        if not doc or not os.path.exists(doc.file_path):
+            pdf_meta = AcademicPDFGenerator.generate_pdf(
+                task_id=task.id,
+                query=task.query,
+                report_markdown=task.report_markdown or "",
+                sources=task.sources or [],
+                evidence_matrix=task.evidence_matrix or [],
+                claims=task.claims or [],
+                contradictions=task.contradictions or [],
+                summary=task.report_summary,
+                version=version or 1
+            )
+            return FileResponse(
+                path=pdf_meta["file_path"],
+                filename=pdf_meta["file_name"],
+                media_type="application/pdf"
+            )
         return FileResponse(
-            path=docx_meta["file_path"],
-            filename=docx_meta["file_name"],
+            path=doc.file_path,
+            filename=doc.file_name,
+            media_type="application/pdf"
+        )
+    else:
+        if not doc or not os.path.exists(doc.file_path):
+            docx_meta = IEEEDocumentGenerator.generate_docx(
+                task_id=task.id,
+                query=task.query,
+                report_markdown=task.report_markdown or "",
+                sources=task.sources or [],
+                evidence_matrix=task.evidence_matrix or [],
+                claims=task.claims or [],
+                contradictions=task.contradictions or [],
+                summary=task.report_summary,
+                version=version or 1
+            )
+            return FileResponse(
+                path=docx_meta["file_path"],
+                filename=docx_meta["file_name"],
+                media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
+        return FileResponse(
+            path=doc.file_path,
+            filename=doc.file_name,
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         )
-
-    return FileResponse(
-        path=doc.file_path,
-        filename=doc.file_name,
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    )
 
 
 @router.get("/tasks/{task_id}/documents", response_model=List[GeneratedDocumentOut])
@@ -485,7 +565,7 @@ def list_task_documents(
             sha256_hash=d.sha256_hash,
             doc_format=d.doc_format,
             generation_status=d.generation_status,
-            download_url=f"/api/v1/research/tasks/{task.id}/document/download?version={d.version}",
+            download_url=f"/api/v1/research/tasks/{task.id}/document/download?format={d.doc_format}&version={d.version}",
             created_at=d.created_at
         ) for d in gen_docs
     ]

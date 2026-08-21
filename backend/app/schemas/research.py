@@ -84,6 +84,7 @@ class ResearchResult(BaseModel):
     source_diversity_score: Optional[float] = 88.0
     evidence_coverage_score: Optional[float] = 94.0
     docx_download_url: Optional[str] = None
+    pdf_download_url: Optional[str] = None
     generated_documents: List[GeneratedDocumentOut] = []
     token_usage: Dict[str, Any] = {}
     cost_estimate: float = 0.0

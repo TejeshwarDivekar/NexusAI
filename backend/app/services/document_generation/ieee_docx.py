@@ -8,30 +8,41 @@ import docx
 from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.oxml import OxmlElement
-from docx.oxml.ns import qn
+from docx.oxml import OxmlElement, parse_xml
+from docx.oxml.ns import nsdecls, qn
 
 from app.core.logging import logger
-from app.services.query_classifier import QueryClassifier
+from app.services.document_generation.document_model import (
+    StructuredResearchDocument, DocumentModelBuilder
+)
+from app.services.document_generation.citation_validator import CitationValidator
 
 
 class IEEEDocumentGenerator:
     """
     Production IEEE-Style Microsoft Word Document (.docx) Generator.
     Adheres strictly to IEEE publication structure and verified research data:
-    - Title & Abstract
-    - Keywords / Index Terms
-    - 1. Introduction
-    - 2. Research Question & Objectives
-    - 3. Data Sources & Provenance (with Real Retrieval Timestamps)
-    - 4. Methodology
-    - 5. Key Findings & Simple Explanation
-    - 6. Data Analysis & Verified Evidence (with formatted Table)
-    - 7. Comparative Conflict Audit
-    - 8. Limitations & Uncertainties
-    - 9. Conclusion
-    - References (Generated strictly and only from actual retrieved sources)
+    - Formal Research Title Block
+    - 1-Minute Executive Research Summary Box
+    - Abstract & Keywords (Index Terms)
+    - Numbered Sections (I. Introduction, II. Methodology, III. Findings, etc.)
+    - Evidence Analysis Table
+    - Limitations & Scope
+    - Conclusion
+    - IEEE Formatted References (strictly from real retrieved sources)
     """
+
+    @classmethod
+    def set_cell_background(cls, cell, fill_hex: str):
+        tcPr = cell._element.get_or_add_tcPr()
+        shd = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{fill_hex}"/>')
+        tcPr.append(shd)
+
+    @classmethod
+    def set_cell_margins(cls, cell, top=80, bottom=80, left=120, right=120):
+        tcPr = cell._element.get_or_add_tcPr()
+        tcMar = parse_xml(f'<w:tcMar {nsdecls("w")}><w:top w:w="{top}" w:type="dxa"/><w:bottom w:w="{bottom}" w:type="dxa"/><w:left w:w="{left}" w:type="dxa"/><w:right w:w="{right}" w:type="dxa"/></w:tcMar>')
+        tcPr.append(tcMar)
 
     @classmethod
     def generate_docx(
@@ -45,23 +56,40 @@ class IEEEDocumentGenerator:
         contradictions: List[Dict[str, Any]],
         summary: Optional[str] = None,
         retrieval_timestamp: Optional[str] = None,
-        author_name: str = "NexusAI Research Workspace",
-        author_affiliation: str = "Evidence-Grounded AI Research & Data Analysis",
+        author_name: str = "Principal Researcher",
         output_dir: str = "generated_docs",
         version: int = 1,
+        classification: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Generates an accurate, professional Word Document from verified research data."""
+        """Generates an accurate, publication-grade IEEE Word Document."""
         os.makedirs(output_dir, exist_ok=True)
 
         safe_query_name = re.sub(r'[^a-zA-Z0-9]', '_', query[:40]).strip('_')
         filename = f"IEEE_Report_{safe_query_name}_v{version}_{task_id[:8]}.docx"
         file_path = os.path.join(output_dir, filename)
 
-        timestamp_str = retrieval_timestamp or datetime.utcnow().strftime("%d %B %Y, %H:%M UTC")
+        # 1. Build Structured Document Model
+        doc_model = DocumentModelBuilder.build_structured_document(
+            task_id=task_id,
+            query=query,
+            report_markdown=report_markdown,
+            sources=sources,
+            evidence_matrix=evidence_matrix,
+            claims=claims,
+            contradictions=contradictions,
+            summary=summary,
+            retrieval_timestamp=retrieval_timestamp,
+            author_name=author_name,
+            classification=classification
+        )
 
+        # 2. Validate and Align Citations
+        val_report = CitationValidator.validate_and_align_citations(doc_model)
+
+        # 3. Create Word Document
         doc = docx.Document()
 
-        # Set 0.75-inch standard margins
+        # Set 0.75-inch standard IEEE margins
         for section in doc.sections:
             section.top_margin = Inches(0.75)
             section.bottom_margin = Inches(0.75)
@@ -73,270 +101,278 @@ class IEEEDocumentGenerator:
             header_p = header.paragraphs[0]
             header_p.text = "IEEE RESEARCH SYNTHESIS — VERIFIED EVIDENCE REPORT"
             header_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            header_p.style.font.name = "Times New Roman"
             header_p.style.font.size = Pt(8.5)
             header_p.style.font.color.rgb = RGBColor(120, 120, 120)
 
             footer = section.footer
             footer_p = footer.paragraphs[0]
-            footer_p.text = f"Report Version {version} | Data Retrieved: {timestamp_str} | Task ID: {task_id}"
+            footer_p.text = f"Report Version {version} | Data Retrieved: {doc_model.retrieval_timestamp} | Task ID: {task_id[:8]}"
             footer_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            footer_p.style.font.name = "Times New Roman"
             footer_p.style.font.size = Pt(8.5)
             footer_p.style.font.color.rgb = RGBColor(120, 120, 120)
 
-        # 1. Title Block
-        classification = QueryClassifier.classify(query)
-        formal_title = classification.get("formal_title") or f"Research Synthesis: {query}"
+        # Base Normal Style
+        normal_style = doc.styles['Normal']
+        normal_style.font.name = 'Times New Roman'
+        normal_style.font.size = Pt(10)
+        normal_style.font.color.rgb = RGBColor(15, 23, 42)
 
+        # ----------------------------------------------------
+        # 1. TITLE BLOCK
+        # ----------------------------------------------------
         title_p = doc.add_paragraph()
         title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         title_p.paragraph_format.space_before = Pt(12)
-        title_p.paragraph_format.space_after = Pt(6)
-        title_run = title_p.add_run(formal_title)
+        title_p.paragraph_format.space_after = Pt(4)
+        title_run = title_p.add_run(doc_model.formal_title)
         title_run.font.name = "Times New Roman"
         title_run.font.size = Pt(18)
         title_run.font.bold = True
         title_run.font.color.rgb = RGBColor(15, 23, 42)
 
-        # 2. Author Block
+        if doc_model.subtitle:
+            sub_p = doc.add_paragraph()
+            sub_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            sub_p.paragraph_format.space_after = Pt(8)
+            sub_run = sub_p.add_run(doc_model.subtitle)
+            sub_run.font.name = "Times New Roman"
+            sub_run.font.size = Pt(10.5)
+            sub_run.font.italic = True
+            sub_run.font.color.rgb = RGBColor(71, 85, 105)
+
+        # ----------------------------------------------------
+        # 2. AUTHOR & INSTITUTION BLOCK
+        # ----------------------------------------------------
         author_p = doc.add_paragraph()
         author_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        author_p.paragraph_format.space_after = Pt(16)
+        author_p.paragraph_format.space_after = Pt(14)
         
-        a_run = author_p.add_run(f"{author_name}\n")
-        a_run.font.name = "Times New Roman"
-        a_run.font.size = Pt(11)
-        a_run.font.bold = True
-
-        aff_run = author_p.add_run(f"{author_affiliation}\nData Retrieval Timestamp: {timestamp_str}")
-        aff_run.font.name = "Times New Roman"
-        aff_run.font.size = Pt(9.5)
-        aff_run.font.italic = True
-        aff_run.font.color.rgb = RGBColor(70, 80, 95)
-
-        # 3. Abstract & Index Terms
-        abstract_p = doc.add_paragraph()
-        abstract_p.paragraph_format.left_indent = Inches(0.25)
-        abstract_p.paragraph_format.right_indent = Inches(0.25)
-        abstract_p.paragraph_format.space_after = Pt(6)
-        abstract_p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-
-        abs_bold = abstract_p.add_run("Abstract—")
-        abs_bold.font.name = "Times New Roman"
-        abs_bold.font.size = Pt(10)
-        abs_bold.font.bold = True
-
-        abstract_text = summary or (
-            f"This research document presents a structured investigation into '{query}'. "
-            f"Based on {len(sources)} verified sources retrieved from public registries and scholarly databases, "
-            f"we analyze {len(evidence_matrix)} grounded factual statements and evaluate consensus across findings. "
-            f"All information is strictly mapped to verifiable citations to prevent hallucinations."
-        )
-        abs_run = abstract_p.add_run(abstract_text)
-        abs_run.font.name = "Times New Roman"
-        abs_run.font.size = Pt(10)
-        abs_run.font.italic = True
-
-        # Keywords / Index Terms
-        keywords_p = doc.add_paragraph()
-        keywords_p.paragraph_format.left_indent = Inches(0.25)
-        keywords_p.paragraph_format.right_indent = Inches(0.25)
-        keywords_p.paragraph_format.space_after = Pt(16)
+        ar1 = author_p.add_run(f"Author: {doc_model.author_name}   |   Organization: {doc_model.organization}\n")
+        ar1.font.bold = True
+        ar1.font.size = Pt(9.5)
         
-        kw_bold = keywords_p.add_run("Index Terms—")
-        kw_bold.font.name = "Times New Roman"
-        kw_bold.font.size = Pt(9.5)
-        kw_bold.font.bold = True
+        ar2 = author_p.add_run(f"Date: {doc_model.generation_date}   |   Data Retrieved: {doc_model.retrieval_timestamp}")
+        ar2.font.size = Pt(9.0)
+        ar2.font.color.rgb = RGBColor(100, 116, 139)
 
-        words = [w.strip() for w in re.split(r'\s+', query) if len(w) > 3][:5]
-        kw_text = ", ".join(words) + ", evidence grounding, data verification, literature analysis."
-        kw_run = keywords_p.add_run(kw_text)
-        kw_run.font.name = "Times New Roman"
-        kw_run.font.size = Pt(9.5)
-        kw_run.font.italic = True
+        # ----------------------------------------------------
+        # 3. 1-MINUTE EXECUTIVE RESEARCH SUMMARY BOX
+        # ----------------------------------------------------
+        summary_box = doc_model.research_summary
+        t_box = doc.add_table(rows=1, cols=1)
+        t_box.alignment = WD_TABLE_ALIGNMENT.CENTER
+        t_box.autofit = False
+        t_box.columns[0].width = Inches(7.0)
+        cell = t_box.cell(0, 0)
+        cls.set_cell_background(cell, "F8FAFC")
+        cls.set_cell_margins(cell, top=120, bottom=120, left=150, right=150)
+        
+        bp = cell.paragraphs[0]
+        bp.paragraph_format.space_after = Pt(4)
+        r_box_title = bp.add_run("EXECUTIVE RESEARCH SUMMARY (1-MINUTE OVERVIEW)\n")
+        r_box_title.bold = True
+        r_box_title.font.size = Pt(9.5)
+        r_box_title.font.color.rgb = RGBColor(0, 51, 102)
 
-        # 4. Standard Document Sections
-        cls._add_ieee_heading(doc, "I. INTRODUCTION")
-        cls._add_ieee_paragraph(doc, 
-            f"This research report provides a clear, source-backed analysis of the question: \"{query}\". "
-            "To guarantee accuracy, all facts in this report are retrieved from verified external sources and academic databases [1]. "
-            "The goal of this investigation is to provide a simple, direct explanation first, followed by in-depth technical analysis."
-        )
+        r_box_target = bp.add_run(f"Target Topic: {summary_box.researched_topic}\n\nKey Findings:\n")
+        r_box_target.font.size = Pt(9.0)
+        for f in summary_box.core_findings[:3]:
+            rf = bp.add_run(f"  • {f}\n")
+            rf.font.size = Pt(9.0)
 
-        cls._add_ieee_heading(doc, "II. RESEARCH QUESTION & OBJECTIVES")
-        cls._add_ieee_paragraph(doc,
-            f"The primary research inquiry investigated is: \"{query}\". "
-            "Key objectives include: (1) extracting verified empirical evidence from authoritative literature; "
-            "(2) identifying consensus and potential methodological conflicts across independent records; and "
-            "(3) providing reproducible findings with complete citation provenance."
-        )
+        bp.add_run("\nPrimary Evidence:\n").font.size = Pt(9.0)
+        for e in summary_box.key_evidence_points[:2]:
+            re_run = bp.add_run(f"  • {e}\n")
+            re_run.font.size = Pt(9.0)
 
-        cls._add_ieee_heading(doc, "III. DATA SOURCES & PROVENANCE")
-        cls._add_ieee_paragraph(doc,
-            f"A total of {len(sources)} verified sources were retrieved on {timestamp_str}. "
-            "The data was retrieved from open academic registries (OpenAlex, arXiv, PubMed, Europe PMC, Crossref) and authoritative public sources. "
-            "Every source was checked for relevance, deduplicated, and mapped to exact citation pointers."
-        )
+        rb_bot = bp.add_run(f"\nBottom Line: {summary_box.bottom_line_conclusion}")
+        rb_bot.font.size = Pt(9.0)
+        rb_bot.bold = True
 
-        cls._add_ieee_heading(doc, "IV. METHODOLOGY")
-        cls._add_ieee_paragraph(doc,
-            "The analysis was conducted through a deterministic pipeline: (1) query decomposition; (2) multi-source real-time retrieval; "
-            "(3) quote-level evidence grounding; (4) numerical statistics extraction; and (5) cross-source consensus verification. "
-            "No claims were generated without underlying source support."
-        )
+        doc.add_paragraph().paragraph_format.space_after = Pt(6)
 
-        cls._add_ieee_heading(doc, "V. KEY FINDINGS")
-        if evidence_matrix:
-            cls._add_ieee_paragraph(doc, "The following key findings were extracted directly from the verified sources:")
-            for idx, ev in enumerate(evidence_matrix[:6]):
-                cls._add_ieee_paragraph(doc, f"• [{idx + 1}] {ev.get('source_title', 'Source')}: \"{ev.get('fact_snippet', '')}\"")
+        # ----------------------------------------------------
+        # 4. ABSTRACT & KEYWORDS
+        # ----------------------------------------------------
+        abs_p = doc.add_paragraph()
+        abs_p.paragraph_format.space_after = Pt(8)
+        abs_p.paragraph_format.line_spacing = 1.15
+        
+        abs_head = abs_p.add_run("Abstract— ")
+        abs_head.bold = True
+        abs_head.italic = True
+        abs_head.font.size = Pt(10)
+        
+        abs_text = abs_p.add_run(doc_model.abstract)
+        abs_text.italic = True
+        abs_text.font.size = Pt(9.5)
+
+        if doc_model.keywords:
+            kw_p = doc.add_paragraph()
+            kw_p.paragraph_format.space_after = Pt(12)
+            kw_head = kw_p.add_run("Index Terms— ")
+            kw_head.bold = True
+            kw_head.italic = True
+            kw_head.font.size = Pt(9.5)
+            
+            kw_text = kw_p.add_run(", ".join(doc_model.keywords))
+            kw_text.italic = True
+            kw_text.font.size = Pt(9.5)
+
+        # ----------------------------------------------------
+        # 5. MAIN SECTIONS & TABLES
+        # ----------------------------------------------------
+        for sec in doc_model.sections:
+            h_p = doc.add_paragraph()
+            h_p.paragraph_format.space_before = Pt(14)
+            h_p.paragraph_format.space_after = Pt(4)
+            h_run = h_p.add_run(f"{sec.roman_number}.  {sec.title.upper()}")
+            h_run.bold = True
+            h_run.font.size = Pt(10.5)
+            h_run.font.color.rgb = RGBColor(15, 23, 42)
+
+            for p_text in sec.paragraphs:
+                p_obj = doc.add_paragraph()
+                p_obj.paragraph_format.space_after = Pt(5)
+                p_obj.paragraph_format.line_spacing = 1.15
+                
+                # Split inline citations [X] to bold them
+                parts = re.split(r'(\[\d+\])', p_text)
+                for part in parts:
+                    if re.match(r'^\[\d+\]$', part):
+                        r = p_obj.add_run(part)
+                        r.bold = True
+                        r.font.size = Pt(9.5)
+                    else:
+                        r = p_obj.add_run(part)
+                        r.font.size = Pt(10)
+
+            # If section has a formatted Table
+            if sec.table:
+                t_obj = sec.table
+                tp = doc.add_paragraph()
+                tp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                tp.paragraph_format.space_before = Pt(6)
+                tp.paragraph_format.space_after = Pt(3)
+                tr = tp.add_run(f"TABLE {t_obj.table_number}\n{t_obj.title.upper()}")
+                tr.font.size = Pt(8.5)
+                tr.bold = True
+                
+                t_word = doc.add_table(rows=len(t_obj.rows) + 1, cols=len(t_obj.headers))
+                t_word.alignment = WD_TABLE_ALIGNMENT.CENTER
+                t_word.autofit = True
+                
+                # Header row
+                for i, h in enumerate(t_obj.headers):
+                    c = t_word.rows[0].cells[i]
+                    cls.set_cell_background(c, "0F172A")
+                    cls.set_cell_margins(c, 60, 60, 80, 80)
+                    p = c.paragraphs[0]
+                    r = p.add_run(h)
+                    r.bold = True
+                    r.font.size = Pt(8.5)
+                    r.font.color.rgb = RGBColor(255, 255, 255)
+
+                # Data rows
+                for r_idx, row_vals in enumerate(t_obj.rows):
+                    row_el = t_word.rows[r_idx + 1]
+                    bg = "FFFFFF" if r_idx % 2 == 0 else "F8FAFC"
+                    for c_idx, val in enumerate(row_vals):
+                        c = row_el.cells[c_idx]
+                        cls.set_cell_background(c, bg)
+                        cls.set_cell_margins(c, 40, 40, 60, 60)
+                        p = c.paragraphs[0]
+                        r = p.add_run(val)
+                        r.font.size = Pt(8.5)
+                        if c_idx == 0:
+                            r.bold = True
+                
+                doc.add_paragraph().paragraph_format.space_after = Pt(6)
+
+        # ----------------------------------------------------
+        # 6. LIMITATIONS
+        # ----------------------------------------------------
+        lim_h = doc.add_paragraph()
+        lim_h.paragraph_format.space_before = Pt(14)
+        lim_h.paragraph_format.space_after = Pt(4)
+        lim_hr = lim_h.add_run("VI.  RESEARCH LIMITATIONS & UNCERTAINTIES")
+        lim_hr.bold = True
+        lim_hr.font.size = Pt(10.5)
+
+        for lim in doc_model.limitations:
+            lp = doc.add_paragraph()
+            lp.paragraph_format.space_after = Pt(3)
+            lr = lp.add_run(f"•  {lim}")
+            lr.font.size = Pt(9.5)
+
+        # ----------------------------------------------------
+        # 7. CONCLUSION
+        # ----------------------------------------------------
+        con_h = doc.add_paragraph()
+        con_h.paragraph_format.space_before = Pt(14)
+        con_h.paragraph_format.space_after = Pt(4)
+        con_hr = con_h.add_run("VII.  CONCLUSION")
+        con_hr.bold = True
+        con_hr.font.size = Pt(10.5)
+
+        cp = doc.add_paragraph()
+        cp.paragraph_format.space_after = Pt(12)
+        cp.paragraph_format.line_spacing = 1.15
+        cr = cp.add_run(doc_model.conclusion)
+        cr.font.size = Pt(10)
+
+        # ----------------------------------------------------
+        # 8. REFERENCES (BIBLIOGRAPHY)
+        # ----------------------------------------------------
+        ref_h = doc.add_paragraph()
+        ref_h.paragraph_format.space_before = Pt(16)
+        ref_h.paragraph_format.space_after = Pt(6)
+        ref_hr = ref_h.add_run("REFERENCES")
+        ref_hr.bold = True
+        ref_hr.font.size = Pt(10.5)
+
+        if doc_model.references:
+            for ref in doc_model.references:
+                rp = doc.add_paragraph()
+                rp.paragraph_format.space_after = Pt(3)
+                rp.paragraph_format.left_indent = Inches(0.25)
+                rp.paragraph_format.first_line_indent = Inches(-0.25)
+                
+                ref_text = ref.formatted_citation_text()
+                rr = rp.add_run(ref_text)
+                rr.font.size = Pt(9.0)
+                rr.font.color.rgb = RGBColor(30, 41, 59)
         else:
-            cls._add_ieee_paragraph(doc, f"Key baseline properties for \"{query}\" were confirmed across primary retrieved documentation [1].")
+            rp = doc.add_paragraph()
+            rp.add_run("No references recorded in retrieved sources.").font.size = Pt(9.0)
 
-        # 5. Evidence Table
-        if evidence_matrix:
-            doc.add_paragraph().paragraph_format.space_before = Pt(4)
-            table_caption = doc.add_paragraph()
-            table_caption.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            tc_run = table_caption.add_run("TABLE I: VERIFIED EVIDENCE EXTRACTION MATRIX")
-            tc_run.font.name = "Times New Roman"
-            tc_run.font.size = Pt(9)
-            tc_run.font.bold = True
-
-            table = doc.add_table(rows=1, cols=4)
-            table.alignment = WD_TABLE_ALIGNMENT.CENTER
-            table.autofit = False
-
-            # Header Row
-            hdr_cells = table.rows[0].cells
-            headers = ["Ref", "Source Title", "Verified Quote", "Confidence"]
-            for i, h in enumerate(headers):
-                hdr_cells[i].text = h
-                for p in hdr_cells[i].paragraphs:
-                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    for r in p.runs:
-                        r.font.name = "Times New Roman"
-                        r.font.size = Pt(9)
-                        r.font.bold = True
-
-            # Data Rows
-            for ev in evidence_matrix[:8]:
-                row_cells = table.add_row().cells
-                row_cells[0].text = ev.get("citation_id", "[1]")
-                row_cells[1].text = ev.get("source_title", "Source")[:35]
-                row_cells[2].text = f"\"{ev.get('fact_snippet', '')[:120]}...\""
-                row_cells[3].text = ev.get("confidence", "High")
-                for cell in row_cells:
-                    for p in cell.paragraphs:
-                        for r in p.runs:
-                            r.font.name = "Times New Roman"
-                            r.font.size = Pt(8.5)
-
-            doc.add_paragraph().paragraph_format.space_after = Pt(8)
-
-        cls._add_ieee_heading(doc, "VI. DATA ANALYSIS & DISCUSSION")
-        cls._add_ieee_paragraph(doc,
-            f"The extracted evidence indicates that \"{query}\" exhibits strong consistency across independent studies. "
-            "Data analysis shows that the main findings reported in the literature support the underlying theoretical principles [1]. "
-            "Where numerical benchmarks exist, they demonstrate reproducible performance within expected experimental ranges."
-        )
-
-        cls._add_ieee_heading(doc, "VII. COMPARATIVE CONFLICT AUDIT")
-        if contradictions:
-            cls._add_ieee_paragraph(doc, f"The analysis identified {len(contradictions)} points of methodological divergence across independent publications:")
-            for c in contradictions:
-                cls._add_ieee_paragraph(doc, f"• Discrepancy: {c.get('conflict_rationale', '')} (Claim A: \"{c.get('claim_a_text', '')}\" vs Claim B: \"{c.get('claim_b_text', '')}\")")
-        else:
-            cls._add_ieee_paragraph(doc, "No critical empirical contradictions were detected across the indexed sources. Core findings demonstrate high cross-source consensus.")
-
-        cls._add_ieee_heading(doc, "VIII. LIMITATIONS & UNCERTAINTIES")
-        cls._add_ieee_paragraph(doc,
-            "This report is bounded by publicly accessible registries and indexed records available at the time of retrieval. "
-            f"Data retrieved on {timestamp_str} reflects the state of open documentation at that time. "
-            "Proprietary databases and unpublished experimental results were not included in direct evidence grounding."
-        )
-
-        cls._add_ieee_heading(doc, "IX. CONCLUSION")
-        cls._add_ieee_paragraph(doc,
-            f"This investigation synthesized evidence on \"{query}\" using verified multi-source data. "
-            "By grounding every claim in verifiable source citations [1], the findings provide a reliable, transparent foundation for further research and practical application."
-        )
-
-        # 6. References Section (Strictly from actual retrieved sources)
-        cls._add_ieee_heading(doc, "REFERENCES")
-        for idx, src in enumerate(sources[:12]):
-            ref_p = doc.add_paragraph()
-            ref_p.paragraph_format.left_indent = Inches(0.25)
-            ref_p.paragraph_format.first_line_indent = Inches(-0.25)
-            ref_p.paragraph_format.space_after = Pt(4)
-            ref_p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-
-            num_run = ref_p.add_run(f"[{idx + 1}] ")
-            num_run.font.name = "Times New Roman"
-            num_run.font.size = Pt(9)
-            num_run.font.bold = True
-
-            authors = ", ".join(src.get("authors", [])) if src.get("authors") else "Verified Authors"
-            title = src.get("title", "Research Publication")
-            pub_date = src.get("publication_date") or datetime.utcnow().strftime("%Y")
-            url = src.get("url", "#")
-            src_type = src.get("source_type", "web")
-
-            ref_text = f"{authors}, \"{title},\" {pub_date}. [Online]. Available: {url}"
-
-            r_run = ref_p.add_run(ref_text)
-            r_run.font.name = "Times New Roman"
-            r_run.font.size = Pt(9)
-
-        # Save Document
+        # Save DOCX
         doc.save(file_path)
+
         file_size = os.path.getsize(file_path)
-
         with open(file_path, "rb") as f:
-            file_hash = hashlib.sha256(f.read()).hexdigest()
+            sha256 = hashlib.sha256(f.read()).hexdigest()
 
-        logger.info(f"Generated Verified IEEE DOCX: {file_path} ({file_size} bytes, sha256={file_hash[:12]})")
+        logger.info(f"IEEEDocumentGenerator: Compiled '{filename}' ({file_size} bytes, SHA256: {sha256[:12]})")
 
         return {
+            "status": "success",
+            "task_id": task_id,
+            "version": version,
             "file_name": filename,
-            "filename": filename,
             "file_path": file_path,
             "file_size": file_size,
-            "sha256_hash": file_hash,
-            "version": version,
-            "task_id": task_id,
-            "created_at": datetime.utcnow().isoformat(),
-            "status": "success",
-            "citation_count": len(evidence_matrix),
-            "reference_count": len(sources[:12]),
-            "retrieval_timestamp": timestamp_str
+            "sha256_hash": sha256,
+            "doc_format": "docx",
+            "reference_count": len(doc_model.references),
+            "references_count": len(doc_model.references),
+            "generation_status": "completed",
+            "metadata_json": {
+                "formal_title": doc_model.formal_title,
+                "references_count": len(doc_model.references),
+                "sections_count": len(doc_model.sections),
+                "validation_report": val_report
+            }
         }
-
-    @staticmethod
-    def _add_ieee_heading(doc: docx.Document, title: str):
-        p = doc.add_paragraph()
-        p.paragraph_format.space_before = Pt(14)
-        p.paragraph_format.space_after = Pt(4)
-        p.paragraph_format.keep_with_next = True
-        
-        if title.startswith("I.") or title.startswith("II.") or title.startswith("III.") or title == "REFERENCES" or "." in title[:5]:
-            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        else:
-            p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-
-        run = p.add_run(title)
-        run.font.name = "Times New Roman"
-        run.font.size = Pt(11)
-        run.font.bold = True
-        run.font.color.rgb = RGBColor(15, 23, 42)
-
-    @staticmethod
-    def _add_ieee_paragraph(doc: docx.Document, text: str):
-        p = doc.add_paragraph()
-        p.paragraph_format.space_after = Pt(6)
-        p.paragraph_format.line_spacing = 1.15
-        p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-
-        run = p.add_run(text)
-        run.font.name = "Times New Roman"
-        run.font.size = Pt(10)
-        run.font.color.rgb = RGBColor(30, 41, 59)

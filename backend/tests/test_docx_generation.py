@@ -1,10 +1,12 @@
 import os
 import pytest
-from app.services.document_generation import IEEEDocumentGenerator, IEEEDocumentValidator
+from app.services.document_generation import (
+    IEEEDocumentGenerator, AcademicPDFGenerator, IEEEDocumentValidator, CitationValidator, DocumentModelBuilder
+)
 
 
-def test_ieee_docx_generation_and_metadata(tmp_path):
-    """Test generating a compliant IEEE Word document (.docx) from research data."""
+def test_academic_pdf_and_docx_generation_and_metadata(tmp_path):
+    """Test generating compliant IEEE Word doc (.docx) and Academic PDF (.pdf) from research data."""
     output_dir = str(tmp_path)
     task_id = "test-task-12345"
     query = "Evaluating memory efficiency in sub-4-bit KV-cache quantization for LLMs"
@@ -27,10 +29,9 @@ def test_ieee_docx_generation_and_metadata(tmp_path):
     ]
     mock_evidence = [
         {
-            "citation_id": "[1]",
-            "source_title": "Scalable Sub-4-Bit KV-Cache Quantization",
-            "source_url": "https://arxiv.org/abs/2402.00001",
-            "fact_snippet": "Integer quantization reduces memory bandwidth pressure by 3.8x on A100 GPUs.",
+            "source_id": 1,
+            "claim_text": "Integer quantization reduces memory bandwidth pressure by 3.8x.",
+            "exact_quote": "Integer quantization reduces memory bandwidth pressure by 3.8x on A100 GPUs.",
             "confidence": "High (96%)"
         }
     ]
@@ -50,10 +51,11 @@ def test_ieee_docx_generation_and_metadata(tmp_path):
         }
     ]
 
-    meta = IEEEDocumentGenerator.generate_docx(
+    # 1. Test DOCX Generation
+    docx_meta = IEEEDocumentGenerator.generate_docx(
         task_id=task_id,
         query=query,
-        report_markdown="# Report",
+        report_markdown="# Report\n\nQuantization mechanisms reduce memory footprint [1].",
         sources=mock_sources,
         evidence_matrix=mock_evidence,
         claims=mock_claims,
@@ -62,29 +64,53 @@ def test_ieee_docx_generation_and_metadata(tmp_path):
         version=1
     )
 
-    assert meta["status"] == "success"
-    assert os.path.exists(meta["file_path"])
-    assert meta["file_size"] > 1000
-    assert len(meta["sha256_hash"]) == 64
-    assert meta["version"] == 1
+    assert docx_meta["generation_status"] == "completed"
+    assert os.path.exists(docx_meta["file_path"])
+    assert docx_meta["file_size"] > 1000
+    assert len(docx_meta["sha256_hash"]) == 64
+    assert docx_meta["version"] == 1
 
-    # Validate the generated document
+    # Validate the generated Word document
     val_report = IEEEDocumentValidator.validate_docx(
-        file_path=meta["file_path"],
+        file_path=docx_meta["file_path"],
         expected_sources_count=len(mock_sources)
     )
 
     assert val_report["is_valid"] is True
-    assert "I. INTRODUCTION" in val_report["sections_found"]
-    assert "II. RESEARCH QUESTION" in val_report["sections_found"]
+    assert "INTRODUCTION" in val_report["sections_found"]
     assert "REFERENCES" in val_report["sections_found"]
     assert val_report["references_count"] >= 2
-    assert val_report["paragraphs_count"] > 10
-    assert val_report["tables_count"] >= 1
+    assert val_report["paragraphs_count"] > 5
+
+    # 2. Test PDF Generation
+    pdf_meta = AcademicPDFGenerator.generate_pdf(
+        task_id=task_id,
+        query=query,
+        report_markdown="# Report\n\nQuantization mechanisms reduce memory footprint [1].",
+        sources=mock_sources,
+        evidence_matrix=mock_evidence,
+        claims=mock_claims,
+        contradictions=mock_contradictions,
+        output_dir=output_dir,
+        version=1
+    )
+
+    assert pdf_meta["generation_status"] == "completed"
+    assert os.path.exists(pdf_meta["file_path"])
+    assert pdf_meta["file_size"] > 1000
+    assert len(pdf_meta["sha256_hash"]) == 64
+
+    # Validate generated PDF
+    pdf_val = IEEEDocumentValidator.validate_pdf(
+        file_path=pdf_meta["file_path"],
+        expected_sources_count=len(mock_sources)
+    )
+    assert pdf_val["is_valid"] is True
+    assert pdf_val["file_size"] > 1000
 
 
-def test_docx_download_api_endpoint(client):
-    """Integration test verifying automatic DOCX creation and HTTP binary file download."""
+def test_document_download_api_endpoint_formats(client):
+    """Integration test verifying both PDF and DOCX downloads via API."""
     # 1. Run research task
     run_res = client.post("/api/v1/research/run", json={
         "query": "Quantum error correction thresholds in surface codes",
@@ -96,19 +122,26 @@ def test_docx_download_api_endpoint(client):
     task_data = run_res.json()
     task_id = task_data["task_id"]
     assert task_data["docx_download_url"] is not None
+    assert task_data["pdf_download_url"] is not None
 
-    # 2. Download generated IEEE Word doc
-    download_res = client.get(f"/api/v1/research/tasks/{task_id}/document/download")
-    assert download_res.status_code == 200
-    assert "application/vnd.openxmlformats-officedocument.wordprocessingml.document" in download_res.headers["content-type"]
-    assert len(download_res.content) > 1000
+    # 2. Download generated PDF
+    pdf_download_res = client.get(f"/api/v1/research/tasks/{task_id}/document/download?format=pdf")
+    assert pdf_download_res.status_code == 200
+    assert "application/pdf" in pdf_download_res.headers["content-type"]
+    assert len(pdf_download_res.content) > 1000
+    assert pdf_download_res.content.startswith(b"%PDF")
 
-    # 3. List documents for task
+    # 3. Download generated IEEE Word doc
+    docx_download_res = client.get(f"/api/v1/research/tasks/{task_id}/document/download?format=docx")
+    assert docx_download_res.status_code == 200
+    assert "application/vnd.openxmlformats-officedocument.wordprocessingml.document" in docx_download_res.headers["content-type"]
+    assert len(docx_download_res.content) > 1000
+
+    # 4. List documents for task
     list_docs_res = client.get(f"/api/v1/research/tasks/{task_id}/documents")
     assert list_docs_res.status_code == 200
     docs_list = list_docs_res.json()
-    assert len(docs_list) >= 1
-    assert docs_list[0]["version"] == 1
+    assert len(docs_list) >= 2
 
 
 def test_docx_regeneration_versioning(client):

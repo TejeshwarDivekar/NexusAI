@@ -82,6 +82,7 @@ export function ResearchWorkspace() {
   const [sourceDiversityScore, setSourceDiversityScore] = useState<number>(85.0);
   const [evidenceCoverageScore, setEvidenceCoverageScore] = useState<number>(90.0);
   const [docxDownloadUrl, setDocxDownloadUrl] = useState<string | undefined>(undefined);
+  const [pdfDownloadUrl, setPdfDownloadUrl] = useState<string | undefined>(undefined);
 
   // Real Database Projects & Ingested Documents
   const [projects, setProjects] = useState<any[]>([]);
@@ -264,7 +265,8 @@ export function ResearchWorkspace() {
         setQualityScore(latestTask.quality_score || 90.0);
         setSourceDiversityScore(latestTask.source_diversity_score || 85.0);
         setEvidenceCoverageScore(latestTask.evidence_coverage_score || 90.0);
-        setDocxDownloadUrl(latestTask.docx_download_url || `/api/v1/research/tasks/${latestTask.task_id}/document/download`);
+        setDocxDownloadUrl(latestTask.docx_download_url || `/api/v1/research/tasks/${latestTask.task_id}/document/download?format=docx`);
+        setPdfDownloadUrl(latestTask.pdf_download_url || `/api/v1/research/tasks/${latestTask.task_id}/document/download?format=pdf`);
       } else if (data.messages && data.messages.length > 0) {
         const firstUserMsg = data.messages.find((m: any) => m.role === "user");
         setQuery(firstUserMsg ? firstUserMsg.content : data.title);
@@ -275,6 +277,7 @@ export function ResearchWorkspace() {
         setContradictions([]);
         setCurrentTaskId(undefined);
         setDocxDownloadUrl(undefined);
+        setPdfDownloadUrl(undefined);
       }
 
       setErrorMessage(null);
@@ -297,6 +300,7 @@ export function ResearchWorkspace() {
     setContradictions([]);
     setCurrentTaskId(undefined);
     setDocxDownloadUrl(undefined);
+    setPdfDownloadUrl(undefined);
     setErrorMessage(null);
     setIsLoading(false);
     setCurrentTab("launchpad");
@@ -339,6 +343,7 @@ export function ResearchWorkspace() {
     setSummary("");
     setCurrentTaskId(undefined);
     setDocxDownloadUrl(undefined);
+    setPdfDownloadUrl(undefined);
     setCurrentTab("workspace");
     setMobileWorkspaceView("report");
 
@@ -403,7 +408,8 @@ export function ResearchWorkspace() {
       setQualityScore(data.quality_score || 92.0);
       setSourceDiversityScore(data.source_diversity_score || 88.0);
       setEvidenceCoverageScore(data.evidence_coverage_score || 92.0);
-      setDocxDownloadUrl(data.docx_download_url || `/api/v1/research/tasks/${data.task_id}/document/download`);
+      setDocxDownloadUrl(data.docx_download_url || `/api/v1/research/tasks/${data.task_id}/document/download?format=docx`);
+      setPdfDownloadUrl(data.pdf_download_url || `/api/v1/research/tasks/${data.task_id}/document/download?format=pdf`);
       setIsLoading(false);
 
       fetchConversations();
@@ -748,6 +754,7 @@ export function ResearchWorkspace() {
                         query={query}
                         taskId={currentTaskId}
                         docxDownloadUrl={docxDownloadUrl}
+                        pdfDownloadUrl={pdfDownloadUrl}
                         sourcesCount={sources.length}
                         evidenceCount={evidenceMatrix.length}
                         qualityScore={qualityScore}
@@ -817,6 +824,7 @@ export function ResearchWorkspace() {
                         query={query}
                         taskId={currentTaskId}
                         docxDownloadUrl={docxDownloadUrl}
+                        pdfDownloadUrl={pdfDownloadUrl}
                         sourcesCount={sources.length}
                         evidenceCount={evidenceMatrix.length}
                         qualityScore={qualityScore}
