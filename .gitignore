@@ -1,4 +1,4 @@
-# dependencies
+# Dependencies
 /node_modules
 /.pnp
 .pnp.*
@@ -8,55 +8,81 @@
 !.yarn/releases
 !.yarn/versions
 
-# testing
+# Testing & Coverage
 /coverage
+/.coverage
+/.pytest_cache
+*.cover
+*.py,cover
 
-# next.js
+# Next.js Build
 /.next/
 /out/
-
-# production
 /build
+/dist
 
-# misc
+# Misc OS & Editor
 .DS_Store
+Thumbs.db
 *.pem
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 
-# debug
+# Debug Logs
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files
+# Environment Variables (Protect Secrets)
 .env
 .env.local
+.env.production
+.env.development
+.env.staging
 .env.*.local
+!.env.example
+!.env.local.example
+!backend/.env.example
 
-# vercel
+# Vercel
 .vercel
 
-# typescript
+# TypeScript
 *.tsbuildinfo
 next-env.d.ts
 
-# Python
+# Python Bytecode & Environments
 __pycache__/
+*.py[cod]
+*$py.class
 *.pyc
 *.pyo
+*.pyd
+.Python
 .venv/
-.pytest_cache/
+venv/
+ENV/
+env/
 
-# Database files (local dev only)
+# SQLite Databases (Local Dev Only)
 *.db
+*.sqlite
+*.sqlite3
+nexusai_research.db
+test_research.db
+test_user_isolation.db
 
-# Cloudflare tunnel binary
-cloudflared.exe
-cloudflared
-
-# Generated documents (local)
+# Generated Documents (Runtime Output)
 generated_docs/
 backend/generated_docs/
 
-.vercel
-.env*
+# Binaries
+cloudflared.exe
+cloudflared
