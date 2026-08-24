@@ -17,6 +17,7 @@ import {
   Download,
   AlertCircle,
   MessageSquare,
+  RotateCcw,
 } from "lucide-react";
 
 import { TopBar } from "./workspace/TopBar";
@@ -68,6 +69,8 @@ export function ResearchWorkspace() {
   // Execution State
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorTaskId, setErrorTaskId] = useState<string | null>(null);
+  const [lastFailedQuery, setLastFailedQuery] = useState<string | null>(null);
   const [currentTaskId, setCurrentTaskId] = useState<string | undefined>(undefined);
   const [progress, setProgress] = useState(0);
   const [statusMessage, setStatusMessage] = useState("");
@@ -421,13 +424,20 @@ export function ResearchWorkspace() {
   };
 
   // Run Real Research Investigation (Linked to User Conversation)
-  const handleStartResearch = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const cleanQuery = query.trim();
+  const handleStartResearch = async (e?: React.FormEvent | string) => {
+    if (e && typeof e !== "string" && "preventDefault" in e) {
+      e.preventDefault();
+    }
+    const queryToRun = typeof e === "string" ? e : query;
+    const cleanQuery = queryToRun.trim();
     if (!cleanQuery || isLoading) return;
+    if (typeof e === "string") {
+      setQuery(cleanQuery);
+    }
 
     setIsLoading(true);
     setErrorMessage(null);
+    setErrorTaskId(null);
     setProgress(10);
     setStatusMessage("Stage 1/4: Analyzing research question & keywords...");
     setSubQueries([]);
@@ -477,14 +487,48 @@ export function ResearchWorkspace() {
       clearInterval(progressTimer);
 
       if (!res.ok) {
-        let errText = "Research service error. Please refine your query.";
+        let errText = "Research request could not be completed. Please try again.";
+        let errCode = "";
+        let respTaskId = "";
         try {
           const errJson = await res.json();
-          if (errJson && errJson.detail) {
-            errText = typeof errJson.detail === "string" ? errJson.detail : JSON.stringify(errJson.detail);
+          if (errJson) {
+            if (typeof errJson.detail === "string") {
+              errText = errJson.detail;
+            } else if (errJson.detail && typeof errJson.detail === "object") {
+              errText = errJson.detail.message || errJson.detail.detail || errText;
+              errCode = errJson.detail.error_code || "";
+              respTaskId = errJson.detail.task_id || "";
+            } else if (errJson.error && typeof errJson.error === "object") {
+              errText = errJson.error.message || errText;
+              errCode = errJson.error.code || "";
+              respTaskId = errJson.error.request_id || "";
+            } else if (typeof errJson.message === "string") {
+              errText = errJson.message;
+            }
           }
-        } catch {}
-        throw new Error(errText);
+        } catch {
+          if (res.status === 502 || res.status === 503 || res.status === 504) {
+            errText = "Research backend service is temporarily unreachable. Please retry shortly.";
+          } else if (res.status === 404) {
+            errText = "No relevant scholarly sources were found for this query across scientific repositories.";
+          } else if (res.status === 400) {
+            errText = "Please enter a valid research question.";
+          }
+        }
+
+        console.error("[Research Service Error]", {
+          status: res.status,
+          message: errText,
+          code: errCode,
+          taskId: respTaskId,
+          query: cleanQuery,
+        });
+
+        const customErr: any = new Error(errText);
+        customErr.taskId = respTaskId;
+        customErr.code = errCode;
+        throw customErr;
       }
 
       const data = await res.json();
@@ -506,11 +550,15 @@ export function ResearchWorkspace() {
       setDocxDownloadUrl(data.docx_download_url || `/api/v1/research/tasks/${data.task_id}/document/download?format=docx`);
       setPdfDownloadUrl(data.pdf_download_url || `/api/v1/research/tasks/${data.task_id}/document/download?format=pdf`);
       setIsLoading(false);
+      setLastFailedQuery(null);
+      setErrorTaskId(null);
 
       fetchConversations();
     } catch (err: any) {
       setIsLoading(false);
       setProgress(0);
+      setLastFailedQuery(cleanQuery);
+      setErrorTaskId(err.taskId || null);
       setErrorMessage(err.message || "An unexpected error occurred during real research execution.");
     }
   };
@@ -830,9 +878,26 @@ export function ResearchWorkspace() {
                           <p style={{ fontSize: "13px", lineHeight: 1.5, margin: 0 }}>
                             {errorMessage}
                           </p>
-                          <Button variant="outline" size="sm" onClick={() => setCurrentTab("launchpad")}>
-                            Return to Launchpad
-                          </Button>
+                          {errorTaskId && (
+                            <div style={{ fontSize: "11px", opacity: 0.75, fontFamily: "monospace" }}>
+                              Reference ID: {errorTaskId}
+                            </div>
+                          )}
+                          <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "2px" }}>
+                            {lastFailedQuery && (
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                onClick={() => handleStartResearch(lastFailedQuery)}
+                              >
+                                <RotateCcw size={14} style={{ marginRight: "6px" }} />
+                                Retry Research
+                              </Button>
+                            )}
+                            <Button variant="outline" size="sm" onClick={() => setCurrentTab("launchpad")}>
+                              Return to Launchpad
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     ) : isLoading ? (
@@ -918,9 +983,26 @@ export function ResearchWorkspace() {
                           <p style={{ fontSize: "13.5px", lineHeight: 1.5, margin: 0 }}>
                             {errorMessage}
                           </p>
-                          <Button variant="outline" size="sm" onClick={() => setCurrentTab("launchpad")}>
-                            Return to Launchpad
-                          </Button>
+                          {errorTaskId && (
+                            <div style={{ fontSize: "12px", opacity: 0.75, fontFamily: "monospace" }}>
+                              Reference ID: {errorTaskId}
+                            </div>
+                          )}
+                          <div style={{ display: "flex", gap: "10px", alignItems: "center", marginTop: "4px" }}>
+                            {lastFailedQuery && (
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                onClick={() => handleStartResearch(lastFailedQuery)}
+                              >
+                                <RotateCcw size={14} style={{ marginRight: "6px" }} />
+                                Retry Research
+                              </Button>
+                            )}
+                            <Button variant="outline" size="sm" onClick={() => setCurrentTab("launchpad")}>
+                              Return to Launchpad
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     ) : isLoading ? (

@@ -80,6 +80,19 @@ async def run_research(
     db: Session = Depends(get_db)
 ):
     task_id = str(uuid.uuid4())
+    clean_query = (request.query or "").strip()
+    if not clean_query:
+        logger.warning(f"[Research {task_id}] FAILED: stage=validation error=empty_query")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error_code": "EMPTY_QUERY",
+                "message": "Please enter a research question.",
+                "task_id": task_id
+            }
+        )
+
+    logger.info(f"[Research {task_id}] query_received: '{clean_query[:120]}'")
     user = current_user or get_or_create_default_user(db)
     
     # 1. Manage Conversation Association
@@ -94,7 +107,7 @@ async def run_research(
 
     if not convo_id:
         convo_id = str(uuid.uuid4())
-        convo_title = generate_title_from_query(request.query)
+        convo_title = generate_title_from_query(clean_query)
         convo = Conversation(
             id=convo_id,
             user_id=user.id,
@@ -109,7 +122,7 @@ async def run_research(
     user_msg = Message(
         conversation_id=convo_id,
         role="user",
-        content=request.query,
+        content=clean_query,
         created_at=datetime.datetime.utcnow()
     )
     db.add(user_msg)
@@ -125,20 +138,37 @@ async def run_research(
         doc_texts = [d.extracted_text for d in docs]
     
     # Run full deterministic research pipeline
+    logger.info(f"[Research {task_id}] stage=source_search_started academic={request.include_academic} depth={request.depth}")
     final_state = {}
-    async for event in ResearchEngine.run_pipeline(
-        task_id=task_id,
-        query=request.query,
-        document_texts=doc_texts,
-        include_academic=request.include_academic,
-        depth=request.depth
-    ):
-        final_state = event
+    try:
+        async for event in ResearchEngine.run_pipeline(
+            task_id=task_id,
+            query=clean_query,
+            document_texts=doc_texts,
+            include_academic=request.include_academic,
+            depth=request.depth
+        ):
+            final_state = event
+    except Exception as e:
+        logger.error(f"[Research {task_id}] FAILED: stage=pipeline_execution error={e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error_code": "RESEARCH_PIPELINE_ERROR",
+                "message": "Research pipeline encountered an unexpected error. Please try again.",
+                "task_id": task_id
+            }
+        )
 
     if final_state.get("status") == "failed":
+        logger.warning(f"[Research {task_id}] FAILED: stage=source_retrieval reason=no_sources_found")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=final_state.get("error", "No relevant scholarly sources were found for this query.")
+            detail={
+                "error_code": "NO_SOURCES_FOUND",
+                "message": final_state.get("error", "No relevant scholarly sources were found for this query."),
+                "task_id": task_id
+            }
         )
         
     metrics = calculate_quality_metrics(

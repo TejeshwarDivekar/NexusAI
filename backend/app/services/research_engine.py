@@ -61,6 +61,9 @@ class ResearchEngine:
         Executes the 7-stage research pipeline with real-time SSE progress updates.
         Zero fake data or fabricated metrics.
         """
+        req_id = task_id or "pipeline"
+        logger.info(f"[Research {req_id}] stage=query_classification query='{query[:100]}'")
+
         # Step 1: Query Classification & Topic Cleaning
         yield {
             "status": "classifying",
@@ -75,6 +78,7 @@ class ResearchEngine:
         await asyncio.sleep(0.05)
 
         # Step 2: Multi-Source Real-Data Retrieval
+        logger.info(f"[Research {req_id}] stage=source_search_started providers=OpenAlex,arXiv,PubMed,EuropePMC,Crossref,Wikipedia,DuckDuckGo topic='{cleaned_topic}'")
         yield {
             "status": "searching",
             "step": f"Stage 2/7: Querying real academic and web registries for '{cleaned_topic}'",
@@ -91,6 +95,7 @@ class ResearchEngine:
             include_web=include_web,
             limit=limit_per_query
         )
+        logger.info(f"[Research {req_id}] stage=source_search_completed total_raw_sources={len(all_sources)}")
 
         # Append user uploaded document excerpts if present
         if document_texts:
@@ -139,6 +144,15 @@ class ResearchEngine:
                 max_results=6
             )
 
+        if not filtered_sources and not all_sources:
+            logger.warning(f"[Research {req_id}] FAILED: stage=source_retrieval reason=zero_sources_found")
+            yield {
+                "status": "failed",
+                "error": "No relevant scholarly sources were found for this query across OpenAlex, PubMed, Europe PMC, arXiv, and Crossref. Please try different keywords or expand the search scope."
+            }
+            return
+
+        logger.info(f"[Research {req_id}] stage=relevance_filtering_completed filtered_sources={len(filtered_sources)}")
         await asyncio.sleep(0.05)
 
         # Step 4: Extract Verified Evidence & Sentence-Level Quotes
@@ -150,6 +164,7 @@ class ResearchEngine:
         }
         evidence_matrix = EvidenceService.extract_evidence(query, filtered_sources)
         verified_claims = EvidenceService.verify_claims(evidence_matrix)
+        logger.info(f"[Research {req_id}] stage=evidence_extraction_completed evidence_items={len(evidence_matrix)} claims={len(verified_claims)}")
 
         await asyncio.sleep(0.05)
 
@@ -161,16 +176,17 @@ class ResearchEngine:
             "evidence_count": len(evidence_matrix)
         }
         contradictions = ContradictionService.detect_contradictions(verified_claims, evidence_matrix)
+        logger.info(f"[Research {req_id}] stage=contradiction_auditing_completed contradictions={len(contradictions)}")
 
         # Step 6: Quantitative & Tabular Data Extraction
         combined_text = " ".join(s.get("snippet", "") + " " + s.get("content", "") for s in filtered_sources)
         numerical_analysis = DataAnalysisService.extract_numbers_and_compare(combined_text)
         table_analysis = DataAnalysisService.parse_csv_or_table(combined_text)
 
-
         await asyncio.sleep(0.05)
 
         # Step 7: Answer-First LLM Synthesis with Exact Citations
+        logger.info(f"[Research {req_id}] stage=llm_synthesis_started")
         yield {
             "status": "synthesizing",
             "step": "Stage 6/7: Formulating clear answer-first explanation and key points",
@@ -186,6 +202,7 @@ class ResearchEngine:
             numerical_analysis=numerical_analysis,
             table_analysis=table_analysis
         )
+        logger.info(f"[Research {req_id}] stage=llm_synthesis_completed report_chars={len(report_markdown)}")
 
         yield {
             "status": "completed",
