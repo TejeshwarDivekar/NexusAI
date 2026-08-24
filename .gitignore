@@ -24,6 +24,8 @@
 # Misc OS & Editor
 .DS_Store
 Thumbs.db
+~$*
+*.tmp
 *.pem
 .vscode/
 .idea/
