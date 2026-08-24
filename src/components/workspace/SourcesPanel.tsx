@@ -29,7 +29,11 @@ export interface SourceData {
   reliability: number;
   authors?: string[];
   publication_date?: string | null;
+  year?: number | string;
+  publisher?: string;
+  journal?: string;
   doi?: string;
+  citation_id?: string;
   source_validity?: string;
   query_relevance?: string;
   relevance_score?: number;

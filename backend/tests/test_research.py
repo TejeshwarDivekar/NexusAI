@@ -30,3 +30,21 @@ def test_research_run_and_evidence_matrix(client):
     # Fetch contradictions
     cont_res = client.get(f"/api/v1/research/tasks/{task_id}/contradictions")
     assert cont_res.status_code == 200
+
+
+def test_explain_evidence_endpoint(client):
+    payload = {
+        "query": "Impact of Quantum Computing on Post-Quantum Cryptography",
+        "claim": "Lattice-based algorithms provide hardness based on Shortest Vector Problem.",
+        "fact_snippet": "Lattice-based cryptography relies on the hardness of lattice problems in high dimensions such as SVP and LWE.",
+        "source_title": "Post-Quantum Cryptography Standardization",
+        "source_url": "https://csrc.nist.gov/projects/pqc-standardization",
+        "citation_id": "[1]"
+    }
+
+    res = client.post("/api/v1/research/explain-evidence", json=payload)
+    assert res.status_code == 200
+    data = res.json()
+    assert "explanation" in data
+    assert len(data["explanation"]) > 0
+    assert data["claim"] == payload["claim"]

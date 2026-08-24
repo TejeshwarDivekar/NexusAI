@@ -29,6 +29,7 @@ import { SourcesPanel, SourceData } from "./workspace/SourcesPanel";
 import { EvidencePanel, EvidenceData } from "./workspace/EvidencePanel";
 import { ContradictionViewer, ContradictionData } from "./workspace/ContradictionViewer";
 import { ReportViewer } from "./workspace/ReportViewer";
+import { EvidenceDetailView } from "./workspace/EvidenceDetailView";
 import { SourceComparisonModal } from "./workspace/SourceComparisonModal";
 import { DocumentUploadModal } from "./workspace/DocumentUploadModal";
 import { ProjectManagerModal } from "./workspace/ProjectManagerModal";
@@ -83,6 +84,15 @@ export function ResearchWorkspace() {
   const [evidenceCoverageScore, setEvidenceCoverageScore] = useState<number>(90.0);
   const [docxDownloadUrl, setDocxDownloadUrl] = useState<string | undefined>(undefined);
   const [pdfDownloadUrl, setPdfDownloadUrl] = useState<string | undefined>(undefined);
+
+  // Interactive Evidence Inspection State
+  const [activeEvidence, setActiveEvidence] = useState<EvidenceData | null>(null);
+  const [evidenceExplanationCache, setEvidenceExplanationCache] = useState<Record<string, string>>({});
+  const [isLoadingEvidenceExplanation, setIsLoadingEvidenceExplanation] = useState(false);
+  const [evidenceExplanationError, setEvidenceExplanationError] = useState<string | null>(null);
+  const [savedScrollPosition, setSavedScrollPosition] = useState<number>(0);
+  const centerPanelRef = React.useRef<HTMLDivElement | null>(null);
+  const mobileCenterPanelRef = React.useRef<HTMLDivElement | null>(null);
 
   // Real Database Projects & Ingested Documents
   const [projects, setProjects] = useState<any[]>([]);
@@ -280,6 +290,8 @@ export function ResearchWorkspace() {
         setPdfDownloadUrl(undefined);
       }
 
+      setActiveEvidence(null);
+      setEvidenceExplanationError(null);
       setErrorMessage(null);
       setIsLoading(false);
       setCurrentTab("workspace");
@@ -292,6 +304,8 @@ export function ResearchWorkspace() {
   // Create a new research conversation
   const handleNewConversation = () => {
     setActiveConversationId(null);
+    setActiveEvidence(null);
+    setEvidenceExplanationError(null);
     setQuery("");
     setReportMarkdown("");
     setSummary("");
@@ -305,6 +319,87 @@ export function ResearchWorkspace() {
     setIsLoading(false);
     setCurrentTab("launchpad");
   };
+
+  // Interactive Evidence Selection Handler
+  const handleSelectEvidence = useCallback(async (evidence: EvidenceData) => {
+    // 1. Save scroll position of center panel before opening evidence detail
+    if (centerPanelRef.current) {
+      setSavedScrollPosition(centerPanelRef.current.scrollTop);
+    } else if (mobileCenterPanelRef.current) {
+      setSavedScrollPosition(mobileCenterPanelRef.current.scrollTop);
+    }
+
+    // 2. Set active evidence and make sure center view is visible on mobile
+    setActiveEvidence(evidence);
+    setMobileWorkspaceView("report");
+
+    // 3. Find matching source in sources list
+    const matchingSource = sources.find((s) =>
+      (evidence.citation_id && s.citation_id && evidence.citation_id === s.citation_id) ||
+      (evidence.source_url && s.url && evidence.source_url === s.url) ||
+      (evidence.source_title && s.title && evidence.source_title.toLowerCase() === s.title.toLowerCase())
+    );
+
+    // 4. Check cache for explanation
+    const cacheKey = evidence.citation_id || evidence.claim || evidence.fact_snippet;
+    if (evidenceExplanationCache[cacheKey]) {
+      return;
+    }
+
+    // 5. Generate concise grounded explanation from backend
+    setIsLoadingEvidenceExplanation(true);
+    setEvidenceExplanationError(null);
+
+    try {
+      const res = await fetch("/api/v1/research/explain-evidence", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: query || "Scientific Inquiry",
+          claim: evidence.claim,
+          fact_snippet: evidence.fact_snippet,
+          source_title: matchingSource?.title || evidence.source_title,
+          source_url: matchingSource?.url || evidence.source_url,
+          source_authors: matchingSource?.authors?.join(", ") || (evidence as any).source_authors?.join(", "),
+          source_year: matchingSource?.year ? String(matchingSource.year) : undefined,
+          source_publisher: matchingSource?.publisher || matchingSource?.journal,
+          citation_id: evidence.citation_id,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.explanation) {
+          setEvidenceExplanationCache((prev) => ({
+            ...prev,
+            [cacheKey]: data.explanation,
+          }));
+        }
+      } else {
+        setEvidenceExplanationError("Failed to load explanation from server");
+      }
+    } catch (err: any) {
+      setEvidenceExplanationError(err?.message || "Error generating explanation");
+    } finally {
+      setIsLoadingEvidenceExplanation(false);
+    }
+  }, [sources, query, evidenceExplanationCache]);
+
+  // Return from Evidence Detail to Normal Answer
+  const handleBackToAnswer = useCallback(() => {
+    setActiveEvidence(null);
+    setEvidenceExplanationError(null);
+
+    // Restore saved scroll position
+    setTimeout(() => {
+      if (centerPanelRef.current) {
+        centerPanelRef.current.scrollTop = savedScrollPosition;
+      }
+      if (mobileCenterPanelRef.current) {
+        mobileCenterPanelRef.current.scrollTop = savedScrollPosition;
+      }
+    }, 50);
+  }, [savedScrollPosition]);
 
   // Delete a conversation (Strict Ownership)
   const handleDeleteConversation = async (conversationId: string) => {
@@ -711,6 +806,8 @@ export function ResearchWorkspace() {
                       <EvidencePanel
                         evidenceMatrix={evidenceMatrix}
                         activeCitationId={activeCitationId}
+                        activeEvidence={activeEvidence}
+                        onSelectEvidence={handleSelectEvidence}
                       />
                     ) : errorMessage ? (
                       <div style={{ padding: "20px", width: "100%" }}>
@@ -747,26 +844,44 @@ export function ResearchWorkspace() {
                           sourcesCount={sources.length}
                         />
                       </div>
+                    ) : activeEvidence ? (
+                      <div ref={mobileCenterPanelRef} style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+                        <EvidenceDetailView
+                          evidence={activeEvidence}
+                          source={sources.find((s) =>
+                            (activeEvidence.citation_id && s.citation_id && activeEvidence.citation_id === s.citation_id) ||
+                            (activeEvidence.source_url && s.url && activeEvidence.source_url === s.url) ||
+                            (activeEvidence.source_title && s.title && activeEvidence.source_title.toLowerCase() === s.title.toLowerCase())
+                          )}
+                          query={query}
+                          explanation={evidenceExplanationCache[activeEvidence.citation_id || activeEvidence.claim || activeEvidence.fact_snippet]}
+                          isLoadingExplanation={isLoadingEvidenceExplanation}
+                          explanationError={evidenceExplanationError}
+                          onBackToAnswer={handleBackToAnswer}
+                        />
+                      </div>
                     ) : reportMarkdown ? (
-                      <ReportViewer
-                        markdownContent={reportMarkdown}
-                        summary={summary}
-                        query={query}
-                        taskId={currentTaskId}
-                        docxDownloadUrl={docxDownloadUrl}
-                        pdfDownloadUrl={pdfDownloadUrl}
-                        sourcesCount={sources.length}
-                        evidenceCount={evidenceMatrix.length}
-                        qualityScore={qualityScore}
-                        sourceDiversityScore={sourceDiversityScore}
-                        evidenceCoverageScore={evidenceCoverageScore}
-                        onCitationClick={(citationId) => {
-                          setActiveCitationId(citationId);
-                          setMobileWorkspaceView("evidence");
-                        }}
-                        onViewSources={() => setMobileWorkspaceView("sources")}
-                        onViewEvidence={() => setMobileWorkspaceView("evidence")}
-                      />
+                      <div ref={mobileCenterPanelRef} style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+                        <ReportViewer
+                          markdownContent={reportMarkdown}
+                          summary={summary}
+                          query={query}
+                          taskId={currentTaskId}
+                          docxDownloadUrl={docxDownloadUrl}
+                          pdfDownloadUrl={pdfDownloadUrl}
+                          sourcesCount={sources.length}
+                          evidenceCount={evidenceMatrix.length}
+                          qualityScore={qualityScore}
+                          sourceDiversityScore={sourceDiversityScore}
+                          evidenceCoverageScore={evidenceCoverageScore}
+                          onCitationClick={(citationId) => {
+                            setActiveCitationId(citationId);
+                            setMobileWorkspaceView("evidence");
+                          }}
+                          onViewSources={() => setMobileWorkspaceView("sources")}
+                          onViewEvidence={() => setMobileWorkspaceView("evidence")}
+                        />
+                      </div>
                     ) : (
                       <div style={{ padding: "32px", width: "100%" }}>
                         <EmptyState
@@ -817,26 +932,44 @@ export function ResearchWorkspace() {
                           sourcesCount={sources.length}
                         />
                       </div>
+                    ) : activeEvidence ? (
+                      <div ref={centerPanelRef} style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+                        <EvidenceDetailView
+                          evidence={activeEvidence}
+                          source={sources.find((s) =>
+                            (activeEvidence.citation_id && s.citation_id && activeEvidence.citation_id === s.citation_id) ||
+                            (activeEvidence.source_url && s.url && activeEvidence.source_url === s.url) ||
+                            (activeEvidence.source_title && s.title && activeEvidence.source_title.toLowerCase() === s.title.toLowerCase())
+                          )}
+                          query={query}
+                          explanation={evidenceExplanationCache[activeEvidence.citation_id || activeEvidence.claim || activeEvidence.fact_snippet]}
+                          isLoadingExplanation={isLoadingEvidenceExplanation}
+                          explanationError={evidenceExplanationError}
+                          onBackToAnswer={handleBackToAnswer}
+                        />
+                      </div>
                     ) : reportMarkdown ? (
-                      <ReportViewer
-                        markdownContent={reportMarkdown}
-                        summary={summary}
-                        query={query}
-                        taskId={currentTaskId}
-                        docxDownloadUrl={docxDownloadUrl}
-                        pdfDownloadUrl={pdfDownloadUrl}
-                        sourcesCount={sources.length}
-                        evidenceCount={evidenceMatrix.length}
-                        qualityScore={qualityScore}
-                        sourceDiversityScore={sourceDiversityScore}
-                        evidenceCoverageScore={evidenceCoverageScore}
-                        onCitationClick={(citationId) => {
-                          setActiveCitationId(citationId);
-                          setRightPanelTab("evidence");
-                        }}
-                        onViewSources={() => {}}
-                        onViewEvidence={() => setRightPanelTab("evidence")}
-                      />
+                      <div ref={centerPanelRef} style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+                        <ReportViewer
+                          markdownContent={reportMarkdown}
+                          summary={summary}
+                          query={query}
+                          taskId={currentTaskId}
+                          docxDownloadUrl={docxDownloadUrl}
+                          pdfDownloadUrl={pdfDownloadUrl}
+                          sourcesCount={sources.length}
+                          evidenceCount={evidenceMatrix.length}
+                          qualityScore={qualityScore}
+                          sourceDiversityScore={sourceDiversityScore}
+                          evidenceCoverageScore={evidenceCoverageScore}
+                          onCitationClick={(citationId) => {
+                            setActiveCitationId(citationId);
+                            setRightPanelTab("evidence");
+                          }}
+                          onViewSources={() => {}}
+                          onViewEvidence={() => setRightPanelTab("evidence")}
+                        />
+                      </div>
                     ) : (
                       <div style={{ padding: "48px", maxWidth: "600px", margin: "0 auto", width: "100%" }}>
                         <EmptyState
@@ -880,6 +1013,8 @@ export function ResearchWorkspace() {
                       <EvidencePanel
                         evidenceMatrix={evidenceMatrix}
                         activeCitationId={activeCitationId}
+                        activeEvidence={activeEvidence}
+                        onSelectEvidence={handleSelectEvidence}
                       />
                     ) : (
                       <div style={{ padding: "14px" }}>

@@ -24,17 +24,23 @@ export interface EvidenceData {
   why_relevant?: string;
   query_relevance?: string;
   relevance_score?: number;
+  source_authors?: string[];
+  source_year?: number | string;
+  source_publisher?: string;
+  source_doi?: string;
 }
 
 export interface EvidencePanelProps {
   evidenceMatrix: EvidenceData[];
   activeCitationId?: string | null;
+  activeEvidence?: EvidenceData | null;
   onSelectEvidence?: (evidence: EvidenceData) => void;
 }
 
 export function EvidencePanel({
   evidenceMatrix,
   activeCitationId,
+  activeEvidence,
   onSelectEvidence,
 }: EvidencePanelProps) {
   const [searchTerm, setSearchTerm] = useState("");
@@ -137,7 +143,11 @@ export function EvidencePanel({
         ) : (
           filteredEvidence.map((item, idx) => {
             const rawCitationNumber = (item.citation_id || `[${idx + 1}]`).replace(/[^0-9]/g, "");
-            const isHighlighted = activeCitationId && activeCitationId.replace(/[^0-9]/g, "") === rawCitationNumber;
+            const isSelected = !!activeEvidence && (
+              (activeEvidence.citation_id && item.citation_id && activeEvidence.citation_id === item.citation_id) ||
+              (activeEvidence.claim && item.claim && activeEvidence.claim === item.claim)
+            );
+            const isHighlighted = isSelected || Boolean(activeCitationId && activeCitationId.replace(/[^0-9]/g, "") === rawCitationNumber);
 
             return (
               <div
@@ -147,9 +157,9 @@ export function EvidencePanel({
                 style={{
                   padding: "14px",
                   borderRadius: "var(--radius-md)",
-                  border: `1.5px solid ${isHighlighted ? "var(--accent-primary)" : "var(--border-primary)"}`,
-                  backgroundColor: isHighlighted ? "var(--accent-subtle)" : "var(--bg-surface)",
-                  boxShadow: isHighlighted ? "0 0 0 3px rgba(37, 99, 235, 0.15)" : "var(--shadow-xs)",
+                  border: `1.5px solid ${isSelected ? "var(--accent-primary)" : isHighlighted ? "var(--accent-primary)" : "var(--border-primary)"}`,
+                  backgroundColor: isSelected ? "var(--accent-subtle)" : isHighlighted ? "var(--bg-subtle)" : "var(--bg-surface)",
+                  boxShadow: isSelected ? "0 0 0 3px rgba(37, 99, 235, 0.2)" : isHighlighted ? "0 0 0 2px rgba(37, 99, 235, 0.1)" : "var(--shadow-xs)",
                   display: "flex",
                   flexDirection: "column",
                   gap: "10px",
@@ -157,13 +167,13 @@ export function EvidencePanel({
                   transition: "all 0.2s ease",
                 }}
                 onMouseEnter={(e) => {
-                  if (!isHighlighted) {
+                  if (!isHighlighted && !isSelected) {
                     e.currentTarget.style.borderColor = "var(--border-secondary)";
                     e.currentTarget.style.backgroundColor = "var(--bg-subtle)";
                   }
                 }}
                 onMouseLeave={(e) => {
-                  if (!isHighlighted) {
+                  if (!isHighlighted && !isSelected) {
                     e.currentTarget.style.borderColor = "var(--border-primary)";
                     e.currentTarget.style.backgroundColor = "var(--bg-surface)";
                   }
@@ -171,16 +181,23 @@ export function EvidencePanel({
               >
                 {/* Citation ID Header */}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <span
-                    className="citation-pill"
-                    style={{
-                      backgroundColor: isHighlighted ? "var(--accent-primary)" : "var(--accent-subtle)",
-                      color: isHighlighted ? "#FFFFFF" : "var(--accent-primary)",
-                      fontWeight: 700,
-                    }}
-                  >
-                    {item.citation_id || `[${idx + 1}]`}
-                  </span>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span
+                      className="citation-pill"
+                      style={{
+                        backgroundColor: isSelected ? "var(--accent-primary)" : isHighlighted ? "var(--accent-primary)" : "var(--accent-subtle)",
+                        color: isSelected ? "#FFFFFF" : isHighlighted ? "#FFFFFF" : "var(--accent-primary)",
+                        fontWeight: 700,
+                      }}
+                    >
+                      {item.citation_id || `[${idx + 1}]`}
+                    </span>
+                    {isSelected && (
+                      <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--accent-primary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                        • Inspecting
+                      </span>
+                    )}
+                  </div>
                   <span
                     style={{
                       fontSize: "11px",

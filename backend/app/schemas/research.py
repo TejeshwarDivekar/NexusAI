@@ -85,8 +85,28 @@ class ResearchResult(BaseModel):
     evidence_coverage_score: Optional[float] = 94.0
     docx_download_url: Optional[str] = None
     pdf_download_url: Optional[str] = None
-    generated_documents: List[GeneratedDocumentOut] = []
-    token_usage: Dict[str, Any] = {}
-    cost_estimate: float = 0.0
     created_at: datetime.datetime
     completed_at: Optional[datetime.datetime] = None
+
+
+class ExplainEvidenceRequest(BaseModel):
+    query: str
+    claim: str
+    fact_snippet: str
+    source_title: Optional[str] = None
+    source_url: Optional[str] = None
+    source_authors: Optional[str] = None
+    source_year: Optional[str] = None
+    source_publisher: Optional[str] = None
+    citation_id: Optional[str] = None
+
+
+class ExplainEvidenceResponse(BaseModel):
+    explanation: str
+    claim: Optional[str] = None
+    citation_id: Optional[str] = None
+    main_takeaway: Optional[str] = None
+    why_it_matters: Optional[str] = None
+    connection_to_research: Optional[str] = None
+    limitations: Optional[str] = None
+

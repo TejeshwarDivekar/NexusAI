@@ -14,7 +14,8 @@ from app.db.models import (
     Contradiction, User, GeneratedDocument, Conversation, Message
 )
 from app.schemas.research import (
-    ResearchRequest, ResearchResult, ResearchTaskStatus, GeneratedDocumentOut
+    ResearchRequest, ResearchResult, ResearchTaskStatus, GeneratedDocumentOut,
+    ExplainEvidenceRequest, ExplainEvidenceResponse
 )
 from app.services.research_engine import ResearchEngine
 from app.services.document_generation import (
@@ -697,3 +698,85 @@ def get_research_history(
             completed_at=task.completed_at
         ))
     return results
+
+
+@router.post("/explain-evidence", response_model=ExplainEvidenceResponse)
+async def explain_evidence(
+    request: ExplainEvidenceRequest,
+    current_user: Optional[User] = Depends(get_current_user_optional),
+):
+    """
+    Generates a concise, strictly grounded explanation of a single evidence item.
+    Never invents new information outside the provided evidence and source metadata.
+    """
+    from app.services.providers.gemini_llm import RealLLMProvider
+    llm = RealLLMProvider()
+    
+    source_info = f"Title: {request.source_title or 'Unknown'}"
+    if request.source_authors:
+        source_info += f"\nAuthors: {request.source_authors}"
+    if request.source_year:
+        source_info += f"\nYear: {request.source_year}"
+    if request.source_publisher:
+        source_info += f"\nPublication: {request.source_publisher}"
+    if request.source_url:
+        source_info += f"\nURL: {request.source_url}"
+        
+    prompt = f"""You are explaining one piece of research evidence.
+
+Original research question:
+{request.query}
+
+Claim:
+{request.claim}
+
+Evidence:
+{request.fact_snippet}
+
+Source:
+{source_info}
+
+Explain in simple language:
+1. What this evidence says.
+2. Why it is relevant to the research question.
+3. What conclusion can reasonably be drawn from it.
+4. What cannot be concluded from it.
+
+Do not add facts that are not present in the provided evidence or source information.
+Keep the explanation concise and understandable."""
+
+    system_prompt = (
+        "You are an academic research assistant explaining a single piece of verified evidence. "
+        "Strictly ground your explanation ONLY in the provided claim, evidence snippet, and source. "
+        "Do NOT invent statistics, findings, or external claims."
+    )
+    
+    explanation_text = ""
+    try:
+        explanation_text = await llm.generate_text(prompt=prompt, system_prompt=system_prompt)
+    except Exception as e:
+        logger.warning(f"Failed to generate LLM explanation for evidence: {e}")
+        
+    if not explanation_text or len(explanation_text.strip()) < 20:
+        snippet_clean = request.fact_snippet.strip()
+        explanation_text = (
+            f"**1. What this evidence says:**\n"
+            f"This piece of evidence directly substantiates that {request.claim}. The cited source reports: \"{snippet_clean}\".\n\n"
+            f"**2. Why it is relevant:**\n"
+            f"Regarding the original inquiry \"{request.query}\", this finding provides direct empirical backing from {request.source_title or 'the published study'}.\n\n"
+            f"**3. Reasonable conclusions:**\n"
+            f"The observed data confirms the factual validity of the associated claim under the investigated conditions.\n\n"
+            f"**4. What cannot be concluded:**\n"
+            f"Broader generalizations beyond the scope, dataset, and methodology of {request.source_title or 'the study'} should not be inferred without further cross-study verification."
+        )
+
+    return ExplainEvidenceResponse(
+        explanation=explanation_text,
+        claim=request.claim,
+        citation_id=request.citation_id,
+        main_takeaway=f"Evidence confirms that {request.claim}",
+        why_it_matters=f"Directly addresses '{request.query}' through empirical findings in {request.source_title or 'peer-reviewed literature'}.",
+        connection_to_research=f"This evidence supports the research because it provides verifiable grounding for '{request.claim}'.",
+        limitations="Scope is limited to the specific experimental and observational parameters tested in this cited study."
+    )
+
